@@ -27,16 +27,21 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Verify required secrets
+        run: |
+          test -n "${{ secrets.GCP_WIF_PROVIDER }}" || { echo "ERR: missing GCP_WIF_PROVIDER"; exit 1; }
+          test -n "${{ secrets.GCP_SERVICE_ACCOUNT }}" || { echo "ERR: missing GCP_SERVICE_ACCOUNT"; exit 1; }
+          test -n "${{ secrets.DRIVE_FOLDER_ID }}" || { echo "ERR: missing DRIVE_FOLDER_ID"; exit 1; }
+
       - name: Create test file
         run: |
           echo "Hello from GitHub Actions at $(date)" > test.txt
 
       - name: Upload to Drive
         run: |
-          gcloud auth application-default print-access-token > token.txt
-          ACCESS_TOKEN=$(cat token.txt)
-          curl -X POST \
+          ACCESS_TOKEN="$(gcloud auth print-access-token)"
+          curl -sS -X POST \
             -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-            -F "metadata={name :'test.txt', parents:['${{ secrets.DRIVE_FOLDER_ID }}']};type=application/json;charset=UTF-8" \
+            -F "metadata={\"name\":\"test.txt\",\"parents\":[\"${{ secrets.DRIVE_FOLDER_ID }}\"]};type=application/json;charset=UTF-8" \
             -F "file=@test.txt;type=text/plain" \
             "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart"
