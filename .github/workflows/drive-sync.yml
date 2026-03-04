@@ -1,48 +1,42 @@
-name: drive-sync-runbooks
+name: Drive Sync
 
 on:
+  workflow_dispatch:
   push:
-    branches: [ "main" ]
-    paths:
-      - "runbooks/**"
-      - ".github/workflows/drive-sync.yml"
-  workflow_dispatch: {}
-
-permissions:
-  contents: read
-  id-token: write
+    branches:
+      - feature/drive-sync
 
 jobs:
-  upload_runbooks_tgz:
+  upload:
     runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - id: auth
-        name: Auth to Google Cloud (WIF)
-        uses: google-github-actions/auth@v3
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-          token_format: access_token
-          access_token_scopes: https://www.googleapis.com/auth/drive.file
 
-      - name: Build archive
-        run: |
-          set -euo pipefail
-          tar -czf runbooks.tgz runbooks
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
 
-      - name: Upload to Google Drive (files.create multipart)
-        env:
-          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
-          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
-          FILE_NAME: agent-lab_runbooks_${{ github.sha }}.tgz
+      - name: Create test file
         run: |
-          set -euo pipefail
-          test -n "${DRIVE_FOLDER_ID}"
-          curl -sS -X POST \
+          echo "Hello from GitHub Actions at $(date)" > test.txt
+
+      - name: Upload to Drive
+        run: |
+          gcloud auth application-default print-access-token > token.txt
+          ACCESS_TOKEN=$(cat token.txt)
+          curl -X POST \
             -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-            -F "metadata={\"name\":\"${FILE_NAME}\",\"parents\":[\"${DRIVE_FOLDER_ID}\"]};type=application/json; charset=UTF-8" \
-            -F "file=@runbooks.tgz;type=application/gzip" \
+            -F "metadata={name :'test.txt', parents:['${{ secrets.DRIVE_FOLDER_ID }}']};type=application/json;charset=UTF-8" \
+            -F "file=@test.txt;type=text/plain" \
             "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart"
