@@ -42,7 +42,7 @@ append_qp() {
 
 # 1) Fetch GitHub OIDC token (audience = WIF provider)
 log "Fetching GitHub OIDC token..."
-OIDC_URL="$(append_qp "${ACTIONS_ID_TOKEN_REQUEST_URL}" "audience=${GCP_WIF_PROVIDER}")"
+OIDC_URL="$(append_qp "${ACTIONS_ID_TOKEN_REQUEST_URL}" "audience=//iam.googleapis.com/${GCP_WIF_PROVIDER}")"
 OIDC_JSON="$(curl -fsSL -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${OIDC_URL}")"
 OIDC_TOKEN="$(echo "${OIDC_JSON}" | jq -r '.value')"
 [[ -n "${OIDC_TOKEN}" && "${OIDC_TOKEN}" != "null" ]] || die "failed to obtain OIDC token"
