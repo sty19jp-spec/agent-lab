@@ -1,102 +1,154 @@
 # Drive History 保持・削除ポリシー
 
-ステータス: **設計方針確定 / 手動運用中 / 自動化未実装**
+ステータス: **自動化実装済み（週次 dry-run / 手動 delete）**
 
 ---
 
-## 年次削除方針
+## 保持ポリシー
 
 | パス | 役割 | 保持期間 |
 |------|------|----------|
 | `latest/` | 最新 1 件のみ | 常に上書き（保持期間なし） |
-| `history/YYYY/YYYY-MM/` | 月単位アーカイブ | **1 年**（経過後削除対象） |
+| `history/YYYY-MM/` | 月単位アーカイブ | **12 ヶ月**（経過後削除対象） |
 
-**削除単位**: `history/YYYY/` ディレクトリ単位（年次一括）。
-
-**削除条件**: 対象年の 12 月末日から 1 年以上経過していること。
-
-| フォルダ | 削除可能日 |
-|---------|-----------|
-| `history/2025/` | 2026-12-31 以降 |
-| `history/2026/` | 2027-12-31 以降 |
+削除単位は `history/YYYY-MM/` フォルダ単位（月次）。
 
 ---
 
-## 想定フォルダ構造
+## 仕組み：dry-run → confirm+delete の 2 段階
 
 ```
-Google Drive
-└── agent-lab
-    └── drive-sync
-        ├── latest/
-        │   └── backup-latest.txt       <- push のたびに上書き
-        ├── history/
-        │   ├── 2025/
-        │   │   ├── 2025-01/
-        │   │   │   └── backup-2025-01.txt
-        │   │   ├── 2025-02/
-        │   │   │   └── backup-2025-02.txt
-        │   │   └── ...
-        │   └── 2026/
-        │       ├── 2026-01/
-        │       │   └── backup-2026-01.txt
-        │       └── ...                  <- 当年分は保持
-        └── README-運用ルール.txt
-```
+[Stage 1] dry-run（自動 / デフォルト）
+  - 削除対象の YYYY-MM フォルダ名と Drive ID をログ出力するだけ
+  - 何も削除しない
+  - schedule（週次）は常にこのモードで動く
 
-`history/YYYY/` 単位で削除する。月単位（`YYYY-MM/`）での削除は行わない。
+[Stage 2] confirm + delete（手動のみ）
+  - workflow_dispatch で confirm_delete=yes を明示入力した場合のみ実行
+  - デフォルトはゴミ箱移動（30 日後に自動消去）
+  - hard_delete=yes を追加した場合のみ即時完全削除
+```
 
 ---
 
-## 手動削除手順
+## 自動実行（schedule）
 
-### Drive UI で削除（推奨）
+`.github/workflows/drive-retention.yml` が毎週日曜 02:00 UTC に起動し、
+**dry-run のみ** 実行する。ログで削除候補を確認できるが、実際の削除は行わない。
+
+---
+
+## 手動実行：workflow_dispatch
+
+GitHub Actions の `Drive History Retention` ワークフローを手動実行する。
+
+### パラメータ
+
+| パラメータ | 説明 | 値 |
+|-----------|------|----|
+| `retain_months` | 保持月数（デフォルト 12） | 整数（例: `6`） |
+| `confirm_delete` | 削除を実行する場合のみ `yes` と入力 | `yes` / 空欄 |
+| `hard_delete` | ゴミ箱を経由せず即時完全削除する場合のみ `yes` | `yes` / 空欄 |
+
+### 手順 A：dry-run（対象確認だけ）
 
 ```
-1. Google Drive を開く
-2. agent-lab/drive-sync/history/ へ移動
-3. 削除対象の YYYY/ フォルダを右クリック → ゴミ箱に移動
-4. ゴミ箱を空にする（即時削除）または 30 日後に自動削除
+1. Actions → Drive History Retention → Run workflow
+2. retain_months: 12（または任意の月数）
+3. confirm_delete: （空欄のまま）
+4. hard_delete: （空欄のまま）
+5. Run workflow
+→ ログに削除候補フォルダ名と ID が出力される。削除はしない。
 ```
 
-### Drive API で削除（CLI）
+### 手順 B：ゴミ箱移動（通常削除）
+
+```
+1. 手順 A で dry-run を実行し、対象フォルダをログで必ず確認する
+2. Actions → Drive History Retention → Run workflow
+3. retain_months: 12
+4. confirm_delete: yes
+5. hard_delete: （空欄のまま）
+6. Run workflow
+→ 対象フォルダが Drive ゴミ箱に移動される（30 日後に自動消去）
+```
+
+### 手順 C：即時完全削除（hard delete）
+
+```
+1. 手順 A で dry-run を実行し、対象フォルダをログで必ず確認する
+2. Actions → Drive History Retention → Run workflow
+3. retain_months: 12
+4. confirm_delete: yes
+5. hard_delete: yes
+6. Run workflow
+→ 対象フォルダが即時完全削除される（復元不可）
+```
+
+---
+
+## 誤削除防止
+
+### YYYY-MM 以外は対象外
+
+`drive-history-clean.sh` は `history/` 直下のフォルダ名を正規表現
+`^[0-9]{4}-[0-9]{2}$` で検証する。一致しないフォルダは必ずスキップし、
+ログに `WARN Skipping non-YYYY-MM folder` を出力する。
+
+### ログで対象月と ID を確認できる
+
+削除実行前に必ず以下のログが出力される：
+
+```
+---- Deletion candidates (older than YYYY-MM) ----
+  2024-01  (id: 1AbCdEfGhIjKlMnOpQrStUvWx)
+  2024-02  (id: 2BcDeFgHiJkLmNoPqRsTuVwXy)
+----------------------------------------------------
+```
+
+dry-run モードではこの一覧が出力された後 `DRY-RUN mode. No changes made.` で終了する。
+
+### schedule は dry-run のみ
+
+`drive-retention.yml` の `schedule` トリガーは引数なしで
+`drive-history-clean.sh` を呼び出すため、常に dry-run になる。
+`--confirm --delete` はスクリプトに渡されない。
+
+---
+
+## スクリプト直接実行（CLI / 緊急時）
 
 ```bash
-# 1. WIF 認証して access token を取得
-#    （drive-sync.sh の認証フローに準じる）
-ACCESS_TOKEN="$(gcloud auth print-access-token --scopes=https://www.googleapis.com/auth/drive)"
+# dry-run（デフォルト）
+bash scripts/drive-history-clean.sh
 
-# 2. 削除対象フォルダの ID を確認
-PARENT_FOLDER_ID="<drive-sync フォルダの ID>"
-curl -fsSL \
-  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-  "https://www.googleapis.com/drive/v3/files?q='${PARENT_FOLDER_ID}'+in+parents&fields=files(id,name)" \
-  | jq '.files[] | select(.name | startswith("20"))'
+# 保持期間を 6 ヶ月に変更して dry-run
+bash scripts/drive-history-clean.sh --retain-months 6
 
-# 3. 対象フォルダ ID を確認してから削除（ゴミ箱へ移動）
-TARGET_FOLDER_ID="<history/YYYY/ のフォルダ ID>"
-curl -X DELETE \
-  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-  "https://www.googleapis.com/drive/v3/files/${TARGET_FOLDER_ID}"
+# ゴミ箱移動
+bash scripts/drive-history-clean.sh --retain-months 12 --confirm --delete
+
+# 即時完全削除
+bash scripts/drive-history-clean.sh --retain-months 12 --confirm --delete --hard-delete
 ```
 
-**注意**: `DELETE` はゴミ箱へ移動する（即時削除ではない）。
-即時削除する場合は `?supportsAllDrives=true` や別エンドポイントを使用する。
+事前に以下の環境変数が必要（CI 外で実行する場合は手動でエクスポート）：
 
----
-
-## 将来の自動化（拡張点）
-
-- [ ] `drive-sync.yml` に年次削除ジョブを追加
-  - 実行タイミング: 毎年 1 月の `schedule` トリガー or `workflow_dispatch`
-  - 削除前に dry-run モード（`DRIVE_DELETE_DRY_RUN=true`）で対象をログ出力
-- [ ] 削除前に `history/<YYYY>/` の存在確認と件数チェック
-- [ ] 削除結果を GitHub Issues または Slack へ通知（監査ログ代替）
+```bash
+export GCP_WIF_PROVIDER=projects/.../providers/github-provider
+export GCP_SERVICE_ACCOUNT=drive-uploader@....iam.gserviceaccount.com
+export DRIVE_FOLDER_ID=<Drive フォルダ ID>
+export ACTIONS_ID_TOKEN_REQUEST_URL=<OIDC URL>
+export ACTIONS_ID_TOKEN_REQUEST_TOKEN=<OIDC Token>
+```
 
 ---
 
 ## 関連ファイル
 
-- `docs/drive-sync/drive-folder-structure.md` — フォルダ構造定義
-- `docs/drive-sync/README-運用ルール.txt` — 運用ルール原文
-- `runbooks/drive-sync.md` — 同期運用 Runbook
+| ファイル | 役割 |
+|---------|------|
+| `scripts/drive-history-clean.sh` | 削除スクリプト本体 |
+| `.github/workflows/drive-retention.yml` | 週次 dry-run + 手動削除ワークフロー |
+| `docs/drive-sync/drive-folder-structure.md` | フォルダ構造定義 |
+| `runbooks/drive-sync.md` | 同期運用 Runbook |
