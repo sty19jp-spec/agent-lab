@@ -43,6 +43,7 @@ curl -s https://oauth2.googleapis.com/token \
 [[ -n "${ACCESS_TOKEN}" && "${ACCESS_TOKEN}" != "null" ]] || die "failed to obtain OAuth access token"
 
 # ---- Preflight: inspect root Drive folder ----
+log "DEBUG: DRIVE_FOLDER_ID len=${#DRIVE_FOLDER_ID} q=$(printf %q "$DRIVE_FOLDER_ID")"
 log "Preflight: inspecting Drive folder ${DRIVE_FOLDER_ID}..."
 _PREFLIGHT_BODY="${OUTDIR}/preflight.json"
 _PREFLIGHT_HTTP="$(curl -sS -o "${_PREFLIGHT_BODY}" -w '%{http_code}' \
