@@ -159,6 +159,12 @@ permissions:
   id-token: write   ← これがないと OIDC token を取得できない
 ```
 
+> **Note:**
+> `actions: read` permission is not required for this workflow.
+> It should only be added if the workflow needs to call the GitHub
+> Actions API (for example via `gh api`, `gh run list`, or other
+> Actions metadata queries).
+
 ---
 
 ### 4-5. GCP 側の確認コマンド
