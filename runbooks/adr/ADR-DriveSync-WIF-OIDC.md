@@ -1,7 +1,7 @@
 # ADR: GitHub Actions から Google Drive への同期に WIF / OIDC 鍵レス認証を採用する
 
 - **Date**: 2026-03-05
-- **Status**: Accepted
+- **Status**: Superseded by ADR-DriveSync-OAuth-Refresh-Token.md
 - **Deciders**: sty19jp-spec
 - **Confirmed run**: 22701686259
 
