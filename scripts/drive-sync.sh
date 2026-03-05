@@ -83,6 +83,15 @@ ACCESS_TOKEN="$(curl -fsSL -X POST \
   | jq -r '.accessToken')"
 [[ -n "${ACCESS_TOKEN}" && "${ACCESS_TOKEN}" != "null" ]] || die "failed to generate Drive-scoped access token"
 
+# 4b) Preflight: inspect root Drive folder (My Drive vs Shared Drive)
+log "Preflight: inspecting Drive folder ${DRIVE_FOLDER_ID}..."
+_PREFLIGHT_BODY="${OUTDIR}/preflight.json"
+_PREFLIGHT_HTTP="$(curl -sS -o "${_PREFLIGHT_BODY}" -w '%{http_code}' \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  "https://www.googleapis.com/drive/v3/files/${DRIVE_FOLDER_ID}?supportsAllDrives=true&fields=id,name,driveId,capabilities")"
+log "Preflight HTTP=${_PREFLIGHT_HTTP}"
+cat "${_PREFLIGHT_BODY}" >&2
+
 # ---- Drive API helpers ----
 
 # drive_find_folder <name> <parent_id>  →  folder_id or empty
@@ -149,6 +158,7 @@ drive_upload_file() {
   local boundary="drivesync_boundary_$$"
   local metadata="{\"name\":\"${drive_name}\",\"parents\":[\"${parent_id}\"]}"
   local body_file="${OUTDIR}/upload_body_$$.tmp"
+  local resp_file="${OUTDIR}/upload_resp_$$.json"
 
   {
     printf -- '--%s\r\n' "${boundary}"
@@ -161,15 +171,27 @@ drive_upload_file() {
     printf -- '--%s--\r\n' "${boundary}"
   } > "${body_file}"
 
-  local file_id
-  file_id="$(curl -fsSL -X POST \
+  local http_code
+  http_code="$(curl -sS -X POST \
+    -o "${resp_file}" -w '%{http_code}' \
     "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: multipart/related; boundary=${boundary}" \
-    --data-binary "@${body_file}" \
-    | jq -r '.id')"
+    --data-binary "@${body_file}")"
   rm -f "${body_file}"
-  [[ -n "${file_id}" && "${file_id}" != "null" ]] || die "upload failed for '${drive_name}'"
+
+  log "Drive upload HTTP=${http_code} (${drive_name})"
+  if [[ "${http_code}" != "200" && "${http_code}" != "201" ]]; then
+    echo "Drive upload error body:" >&2
+    cat "${resp_file}" >&2
+    rm -f "${resp_file}"
+    die "upload failed for '${drive_name}' (HTTP ${http_code})"
+  fi
+
+  local file_id
+  file_id="$(jq -r '.id' "${resp_file}")"
+  rm -f "${resp_file}"
+  [[ -n "${file_id}" && "${file_id}" != "null" ]] || die "upload succeeded but no id returned for '${drive_name}'"
   printf '%s' "${file_id}"
 }
 
