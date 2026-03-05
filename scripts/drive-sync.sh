@@ -115,16 +115,24 @@ drive_upload_file() {
   local body_file="${OUTDIR}/upload_body_$$.tmp"
   local resp_file="${OUTDIR}/upload_resp_$$.json"
 
-  {
-    printf -- '--%s\r\n' "${boundary}"
-    printf 'Content-Type: application/json; charset=UTF-8\r\n\r\n'
-    printf '%s\r\n' "${metadata}"
-    printf -- '--%s\r\n' "${boundary}"
-    printf 'Content-Type: application/octet-stream\r\n\r\n'
-    cat "${local_path}"
-    printf '\r\n'
-    printf -- '--%s--\r\n' "${boundary}"
-  } > "${body_file}"
+  python3 - "${boundary}" "${metadata}" "${local_path}" "${body_file}" <<'PYEOF'
+import sys
+boundary, metadata, file_path, output_path = sys.argv[1:]
+with open(file_path, 'rb') as f:
+    file_data = f.read()
+with open(output_path, 'wb') as out:
+    out.write(('--' + boundary + '\r\n').encode())
+    out.write(b'Content-Type: application/json; charset=UTF-8\r\n')
+    out.write(b'\r\n')
+    out.write(metadata.encode('utf-8'))
+    out.write(b'\r\n')
+    out.write(('--' + boundary + '\r\n').encode())
+    out.write(b'Content-Type: application/gzip\r\n')
+    out.write(b'\r\n')
+    out.write(file_data)
+    out.write(b'\r\n')
+    out.write(('--' + boundary + '--\r\n').encode())
+PYEOF
 
   local http_code
   http_code="$(curl -sS -X POST \
