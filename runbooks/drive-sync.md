@@ -187,6 +187,48 @@ Google Drive
 
 ---
 
+## Autonomous Operation
+
+Claude Code が人手を介さず Drive Sync を完結させるための実行ループ。
+
+### 実行ループ
+
+```
+gh workflow run drive-sync.yml
+  ↓
+gh run watch <RUN_ID>   # 完了まで待機
+  ↓
+gh run view <RUN_ID> --log   # ログ確認
+  ↓
+問題があれば最小限の修正を加えて
+  ↓
+git commit && git push
+  ↓
+再実行（ループ先頭へ）
+```
+
+### コマンド早見表
+
+```bash
+# ワークフロー起動
+gh workflow run drive-sync.yml --ref main
+
+# 最新 RUN_ID 取得
+gh run list --workflow=drive-sync.yml -L 1 --json databaseId -q '.[0].databaseId'
+
+# 完了まで待機（終了コードで成否判定）
+gh run watch <RUN_ID> --exit-status
+
+# ログ確認
+gh run view <RUN_ID> --log
+gh run view <RUN_ID> --log-failed   # 失敗ステップのみ
+
+# ヘルパースクリプト（起動 + 待機を一括）
+bash scripts/drive-sync-run.sh
+```
+
+---
+
 ## 成功確認済みラン
 
 | Run ID | 日時 | トリガー |
