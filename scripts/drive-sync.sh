@@ -67,7 +67,7 @@ gcloud auth login --cred-file="${WIF_CRED_FILE}" --quiet
 
 # 4) Access token confirm
 log "Checking access token..."
-ACCESS_TOKEN="$(gcloud auth print-access-token)"
+ACCESS_TOKEN="$(gcloud auth print-access-token --scopes=https://www.googleapis.com/auth/drive.readonly)"
 [[ -n "${ACCESS_TOKEN}" ]] || die "gcloud auth print-access-token returned empty"
 
 # 5) Drive API connectivity (folder list)
