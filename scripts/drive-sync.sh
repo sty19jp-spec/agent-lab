@@ -7,6 +7,13 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 require_cmd() { command -v "$1" >/dev/null 2>&1 || die "missing command: $1"; }
 
 # ---- Required env (set in GitHub Secrets or workflow env) ----
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="${SCRIPT_DIR}/drive-sync.config.env"
+if [[ -f "${CONFIG_FILE}" ]]; then
+  # shellcheck disable=SC1090
+  source "${CONFIG_FILE}"
+fi
+
 : "${GCP_WIF_PROVIDER:?missing GCP_WIF_PROVIDER (WIF provider resource name)}"
 : "${GCP_SERVICE_ACCOUNT:?missing GCP_SERVICE_ACCOUNT (service account email)}"
 : "${DRIVE_FOLDER_ID:?missing DRIVE_FOLDER_ID (Drive folder id)}"
