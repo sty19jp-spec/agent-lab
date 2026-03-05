@@ -80,7 +80,7 @@ drive_find_or_create_folder() {
   local fid
   fid="$(drive_find_folder "${name}" "${parent}")"
   if [[ -z "${fid}" ]]; then
-    log "  Creating folder '${name}'..."
+    log "  Creating folder '${name}'..." >&2
     fid="$(drive_create_folder "${name}" "${parent}")"
   fi
   [[ -n "${fid}" && "${fid}" != "null" ]] || die "failed to find/create Drive folder '${name}'"
@@ -143,7 +143,7 @@ PYEOF
     --data-binary "@${body_file}")"
   rm -f "${body_file}"
 
-  log "Drive upload HTTP=${http_code} (${drive_name})"
+  log "Drive upload HTTP=${http_code} (${drive_name})" >&2
   if [[ "${http_code}" != "200" && "${http_code}" != "201" ]]; then
     echo "Drive upload error body:" >&2
     cat "${resp_file}" >&2
