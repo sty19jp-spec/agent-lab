@@ -5,32 +5,28 @@
 ## Architecture
 
 ```
-GitHub Actions Runner
-       |
-       | ACTIONS_ID_TOKEN_REQUEST_URL へ audience 付きで OIDC token 取得
-       v
-GitHub OIDC エンドポイント
-       |
-       | ID Token (JWT, 短命)
-       v
-GCP WIF: gcloud iam workload-identity-pools create-cred-config
-       |
-       | 外部アカウント credential config JSON 生成
-       v
-gcloud auth login --cred-file → STS による token 交換
-       |
-       | 短命 access token（SA: drive-uploader）
-       v
-Drive API v3 (https://www.googleapis.com/drive/v3/files)
-       |
-       v
-Google Drive / agent-lab / drive-sync / latest/ + history/
+GitHub
+  |
+  | push / workflow_dispatch
+  v
+GitHub Actions
+  |
+  | secrets: DRIVE_OAUTH_CLIENT_ID / SECRET / REFRESH_TOKEN
+  v
+OAuth2 token endpoint (oauth2.googleapis.com/token)
+  |
+  | access_token (short-lived)
+  v
+Google Drive API v3
+  (POST /upload/drive/v3/files?uploadType=multipart)
+  |
+  v
+Drive upload → latest/ + history/YYYY-MM/
 ```
 
 関連ファイル:
 - ワークフロー: `.github/workflows/drive-sync.yml`
 - スクリプト: `scripts/drive-sync.sh`
-- 設計決定: `runbooks/adr/ADR-DriveSync-WIF-OIDC.md`
 
 ---
 
@@ -38,14 +34,15 @@ Google Drive / agent-lab / drive-sync / latest/ + history/
 
 | Secret 名 | 保管場所 | 用途 |
 |-----------|----------|------|
-| `GCP_WIF_PROVIDER` | GitHub Secrets | WIF プロバイダリソース名（`projects/…/providers/…`） |
-| `GCP_SERVICE_ACCOUNT` | GitHub Secrets | サービスアカウントメール |
-| `DRIVE_FOLDER_ID` | GitHub Secrets | Google Drive フォルダ ID |
+| `DRIVE_OAUTH_CLIENT_ID` | GitHub Secrets | OAuth クライアント ID |
+| `DRIVE_OAUTH_CLIENT_SECRET` | GitHub Secrets | OAuth クライアントシークレット |
+| `DRIVE_OAUTH_REFRESH_TOKEN` | GitHub Secrets | OAuth リフレッシュトークン（長期） |
+| `DRIVE_FOLDER_ID` | GitHub Secrets | Google Drive アップロード先フォルダ ID |
 
 **境界ルール**:
-- `GCP_WIF_PROVIDER` / `GCP_SERVICE_ACCOUNT` は `scripts/drive-sync.config.env` にも同値が存在するが、Secret が正とする。
-- `DRIVE_FOLDER_ID` は **Secret のみ**。`config.env` の `PASTE_DRIVE_FOLDER_ID_HERE` はローカル開発時のフォールバック表示であり、CI では使用されない。
-- ワークフローの `env:` ブロックで `DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}` として注入することで、`config.env` の source による上書きを防いでいる。
+- 4 つの Secret はすべて GitHub Secrets に保管。`config.env` はローカル開発用フォールバックのみ。
+- ワークフローの `env:` ブロックで各 Secret を注入することで、`config.env` による上書きを防いでいる。
+- リフレッシュトークンの対象プロジェクト: `agent-lab-integrations-489319`（project number: 266557062033）。Drive API はこのプロジェクトで有効化済み。
 
 ---
 
@@ -74,6 +71,25 @@ gh run view <RUN_ID> --log-failed                  # 失敗ステップのみ
 
 ---
 
+## 成功ログ例
+
+```
+[...] Obtaining OAuth access token...
+[...] Creating archive (excluding .git, .claude, .drive-sync-out)...
+[...] Resolving latest/ folder...
+[...] Uploading backup-latest.tar.gz...
+[...] Drive upload HTTP=200 (backup-latest.tar.gz)
+[...] Uploaded latest: <FILE_ID>
+[...] Resolving history/ folder...
+[...] Resolving history/YYYY-MM/ folder...
+[...] Uploading backup-YYYY-MM.tar.gz...
+[...] Drive upload HTTP=200 (backup-YYYY-MM.tar.gz)
+[...] Uploaded history/YYYY-MM: <FILE_ID>
+[...] Drive Sync complete. latest=<ID>  history/YYYY-MM=<ID>
+```
+
+---
+
 ## 障害確認方法
 
 ### 1. 切り分け手順
@@ -83,82 +99,75 @@ gh run view <RUN_ID> --log-failed                  # 失敗ステップのみ
   |
   +-- gh run view <RUN_ID> --log-failed
         |
-        +-- "invalid_grant"       -> §OIDC audience
-        +-- "403"                 -> §Drive API 403
+        +-- HTTP 400 / curl (22)  -> §400 upload error
+        +-- "invalid_grant"       -> §401 token error
+        +-- "403"                 -> §403 permission error
         +-- "404"                 -> §Drive API 404
-        +-- "missing ACTIONS_"   -> §OIDC 権限
-        +-- それ以外              -> §GCP 側確認
+        +-- それ以外              -> ログ全件を確認
 ```
-
-### `invalid_grant: audience does not match`
-
-OIDC token の audience が `//iam.googleapis.com/` プレフィクスなしで発行されている。
-
-```bash
-grep "audience=" scripts/drive-sync.sh
-# 期待値: audience=//iam.googleapis.com/${GCP_WIF_PROVIDER}
-```
-
-詳細は `runbooks/adr/ADR-DriveSync-WIF-OIDC.md` §OIDC Audience を参照。
 
 ---
 
-### Drive API `403`
+### HTTP 400 upload error
 
-access token が Drive スコープを含まない、または Drive API が GCP で無効。
+multipart リクエストが不正、または親フォルダ ID が破損している。
+
+チェック:
+1. `gh run view <RUN_ID> --log` で `Drive upload error body:` 直後の JSON を確認
+2. `history/YYYY-MM/ id:` の値が正常な Drive ID（33 文字英数字）かを確認
+   - ログメッセージが混入している場合、`drive_find_or_create_folder` の stdout 汚染が原因
+3. スクリプトの `log` 呼び出しが command substitution 内で `>&2` にリダイレクトされているか確認
 
 ```bash
-# スクリプトの access token 取得行を確認
-grep "print-access-token" scripts/drive-sync.sh
-# 期待値: --scopes=https://www.googleapis.com/auth/drive.readonly
-
-# GCP 側: Drive API 有効化確認
-gcloud services list --project=agent-lab-integrations | grep drive
+grep -n 'log.*>&2' scripts/drive-sync.sh
 ```
+
+---
+
+### 401 / `invalid_grant` token error
+
+リフレッシュトークンが失効しているか、クライアント ID/シークレットが間違っている。
+
+チェック:
+1. OAuth クライアントが `agent-lab-integrations-489319` に存在するか確認
+2. GitHub Secrets の 3 つの OAuth 値が最新かを確認
+3. ローカルでトークン再取得:
+
+```bash
+# get_refresh_token.py でトークンを再取得し、Secrets を更新する
+python3 get_refresh_token.py
+```
+
+---
+
+### 403 permission error
+
+Drive API が無効か、OAuth スコープが不足している。
+
+```bash
+# Drive API 有効化確認（OAuth クライアントのプロジェクト）
+gcloud services list --enabled \
+  --project=agent-lab-integrations-489319 \
+  --filter="name:drive.googleapis.com" \
+  --format="value(name)"
+
+# 無効な場合は有効化
+gcloud services enable drive.googleapis.com \
+  --project=agent-lab-integrations-489319
+```
+
+OAuth スコープ確認: リフレッシュトークン取得時に `https://www.googleapis.com/auth/drive` が含まれているか確認。
 
 ---
 
 ### Drive API `404`
 
-`DRIVE_FOLDER_ID` が placeholder のまま渡されている。
+`DRIVE_FOLDER_ID` が不正または親フォルダが別アカウントに存在する。
 
 チェック:
 1. `gh secret list` で `DRIVE_FOLDER_ID` が登録されているか
-2. `.github/workflows/drive-sync.yml` の step に `env: DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}` があるか
-
----
-
-### `missing ACTIONS_ID_TOKEN_REQUEST_URL`
-
-ワークフローの `permissions` から `id-token: write` が失われている。
-
-```yaml
-# .github/workflows/drive-sync.yml に必須
-permissions:
-  contents: read
-  id-token: write
-```
-
----
-
-### GCP 側の確認コマンド
-
-```bash
-PROJECT=agent-lab-integrations
-POOL=github-pool
-PROVIDER=github-provider
-
-# WIF Pool / Provider 確認
-gcloud iam workload-identity-pools describe ${POOL} \
-  --project=${PROJECT} --location=global
-gcloud iam workload-identity-pools providers describe ${PROVIDER} \
-  --workload-identity-pool=${POOL} --project=${PROJECT} --location=global
-
-# SA へのバインディング確認
-gcloud projects get-iam-policy ${PROJECT} \
-  --flatten="bindings[].members" \
-  --filter="bindings.members:drive-uploader"
-```
+2. Google Drive UI でフォルダ URL の末尾 ID と Secret の値が一致するか
+3. OAuth 認証アカウントがそのフォルダに編集権限を持っているか
 
 ---
 
@@ -166,15 +175,14 @@ gcloud projects get-iam-policy ${PROJECT} \
 
 ```
 Google Drive
-└── agent-lab
-    └── drive-sync
-        ├── latest/          <- 常に最新 1 件のみ（実行のたびに上書き）
-        └── history/
-            └── YYYY/
-                └── YYYY-MM/ <- 月単位アーカイブ（1 年保持後削除対象）
+└── <DRIVE_FOLDER_ID のルートフォルダ>
+    ├── latest/              <- 常に最新 1 件のみ（実行のたびに trash → 再作成）
+    │   └── backup-latest.tar.gz
+    └── history/
+        └── YYYY-MM/         <- 月単位アーカイブ（実行月ごとに自動作成）
+            └── backup-YYYY-MM.tar.gz
 ```
 
-詳細: `docs/drive-sync/drive-folder-structure.md`
 保持ポリシー: `runbooks/drive-history-retention.md`
 
 ---
@@ -183,5 +191,6 @@ Google Drive
 
 | Run ID | 日時 | トリガー |
 |--------|------|---------|
+| 22738463895 | 2026-03-05T21:52Z | workflow_dispatch（OAuth multipart fix 後） |
 | 22707839837 | 2026-03-05T07:51Z | push（docs 追加コミット） |
 | 22701686259 | 2026-03-05T04:03Z | push（PR #2 マージ） |
