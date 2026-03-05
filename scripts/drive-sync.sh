@@ -93,7 +93,7 @@ drive_find_folder() {
   q_enc="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "${q}")"
   curl -fsSL \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-    "https://www.googleapis.com/drive/v3/files?q=${q_enc}&fields=files(id)" \
+    "https://www.googleapis.com/drive/v3/files?includeItemsFromAllDrives=true&supportsAllDrives=true&q=${q_enc}&fields=files(id)" \
     | jq -r '.files[0].id // empty'
 }
 
@@ -104,7 +104,7 @@ drive_create_folder() {
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: application/json" \
     -d "{\"name\":\"${name}\",\"mimeType\":\"application/vnd.google-apps.folder\",\"parents\":[\"${parent}\"]}" \
-    "https://www.googleapis.com/drive/v3/files?fields=id" \
+    "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id" \
     | jq -r '.id'
 }
 
@@ -130,7 +130,7 @@ drive_delete_file_if_exists() {
   local file_id
   file_id="$(curl -fsSL \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-    "https://www.googleapis.com/drive/v3/files?q=${q_enc}&fields=files(id)" \
+    "https://www.googleapis.com/drive/v3/files?includeItemsFromAllDrives=true&supportsAllDrives=true&q=${q_enc}&fields=files(id)" \
     | jq -r '.files[0].id // empty')"
   if [[ -n "${file_id}" ]]; then
     log "  Trashing existing '${name}' (${file_id})..."
@@ -138,7 +138,7 @@ drive_delete_file_if_exists() {
       -H "Authorization: Bearer ${ACCESS_TOKEN}" \
       -H "Content-Type: application/json" \
       -d '{"trashed":true}' \
-      "https://www.googleapis.com/drive/v3/files/${file_id}?fields=id" \
+      "https://www.googleapis.com/drive/v3/files/${file_id}?supportsAllDrives=true&fields=id" \
       >/dev/null
   fi
 }
@@ -163,7 +163,7 @@ drive_upload_file() {
 
   local file_id
   file_id="$(curl -fsSL -X POST \
-    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id" \
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "Content-Type: multipart/related; boundary=${boundary}" \
     --data-binary "@${body_file}" \
