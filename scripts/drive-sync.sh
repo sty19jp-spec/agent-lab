@@ -66,10 +66,22 @@ gcloud iam workload-identity-pools create-cred-config "${GCP_WIF_PROVIDER}" \
 log "Activating gcloud auth with WIF cred file..."
 gcloud auth login --cred-file="${WIF_CRED_FILE}" --quiet
 
-# 4) Access token confirm
-log "Checking access token..."
-ACCESS_TOKEN="$(gcloud auth print-access-token --scopes=https://www.googleapis.com/auth/drive)"
-[[ -n "${ACCESS_TOKEN}" ]] || die "gcloud auth print-access-token returned empty"
+# 4) Obtain Drive-scoped access token
+# Note: --scopes is silently ignored for external_account (WIF) credentials.
+# Workaround: get a cloud-platform token first, then call generateAccessToken
+# via the IAM Credentials API to obtain a Drive-scoped token explicitly.
+log "Fetching base access token (cloud-platform)..."
+_GCP_TOKEN="$(gcloud auth print-access-token)"
+[[ -n "${_GCP_TOKEN}" ]] || die "gcloud auth print-access-token returned empty"
+
+log "Generating Drive-scoped access token via IAM Credentials API..."
+ACCESS_TOKEN="$(curl -fsSL -X POST \
+  -H "Authorization: Bearer ${_GCP_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"scope":["https://www.googleapis.com/auth/drive"]}' \
+  "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${GCP_SERVICE_ACCOUNT}:generateAccessToken" \
+  | jq -r '.accessToken')"
+[[ -n "${ACCESS_TOKEN}" && "${ACCESS_TOKEN}" != "null" ]] || die "failed to generate Drive-scoped access token"
 
 # ---- Drive API helpers ----
 
