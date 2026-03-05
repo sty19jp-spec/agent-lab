@@ -1,6 +1,6 @@
 name: Drive Sync (latest + history)
 
-"on":
+on:
   workflow_dispatch:
   push:
     branches:
