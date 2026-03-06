@@ -10,6 +10,7 @@
 ## 1. システム目的
 
 GitHub `main` を Source of Truth とし、Google Drive は運用バックアップとして使用する。
+実運用では、`main` への更新（push）を同期処理の基本トリガーとする。
 
 ---
 
