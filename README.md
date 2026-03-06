@@ -71,6 +71,20 @@ gh run list --workflow=drive-sync.yml --limit 5
 
 ---
 
+## Standard PR Workflow
+
+標準フロー（軽量運用）:
+
+AI or Human -> feature branch -> edit -> git diff / status check -> commit -> push -> Pull Request -> human merge -> main
+
+参照:
+
+- [`docs/RUNBOOK-ai-pr-workflow.md`](docs/RUNBOOK-ai-pr-workflow.md)
+- [`docs/RUNBOOK-drive-sync.md`](docs/RUNBOOK-drive-sync.md)
+- [`docs/ADR-001-drive-sync-architecture.md`](docs/ADR-001-drive-sync-architecture.md)
+
+---
+
 ## ファイル構成
 
 ```
