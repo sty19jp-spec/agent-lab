@@ -2,6 +2,13 @@
 
 ---
 
+## Scope
+
+この Runbook は **`.github/workflows/drive-sync.yml`（OAuth 認証）** を対象とする。
+`drive-retention.yml`（履歴削除）は認証方式が異なるため、`runbooks/drive-history-retention.md` を参照する。
+
+---
+
 ## Architecture
 
 ```
@@ -27,6 +34,7 @@ Drive upload → latest/ + history/YYYY-MM/
 関連ファイル:
 - ワークフロー: `.github/workflows/drive-sync.yml`
 - スクリプト: `scripts/drive-sync.sh`
+- Retention Runbook: `runbooks/drive-history-retention.md`
 
 ---
 
