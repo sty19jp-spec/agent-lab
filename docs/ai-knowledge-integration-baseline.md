@@ -33,7 +33,7 @@ Allowed repository knowledge includes executor-relevant, reviewable, versioned a
 
 - `docs/`
 - `runbooks/`
-- `adr/`
+- `runbooks/adr/`
 - `spec/`
 - `architecture/`
 
@@ -60,6 +60,7 @@ Class C: External only
 ## 7. Automation-Readable Knowledge
 Automation and AI executors may read repository content from these directories:
 
+- `docs/`
 - `runbooks/`
 - `scripts/`
 - `configs/`
@@ -98,9 +99,8 @@ Repository-readable knowledge paths:
 
 - `docs/`
 - `runbooks/`
-- `adr/`
+- `runbooks/adr/`
 - `spec/`
 
 ## 11. Done Condition
 This baseline is complete when AI executors consistently treat repository content as authoritative, apply the hierarchy, and ingest external knowledge only through the defined validation-to-documentation boundary.
-
