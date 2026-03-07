@@ -111,3 +111,18 @@ This standard is complete when:
 - Phase9: defines output structure and handoff formatting baseline.
 - Phase10: defines execution boundary and guardrails.
 - Phase11 (this doc): defines when execution must stop and how escalation is handed off safely.
+
+## 12. Post-Merge Local Sync Rule
+
+After any Pull Request is merged, the executor or human must synchronize the local main branch before starting the next task.
+
+Default command:
+
+git switch main && git pull --ff-only
+
+Rationale:
+GitHub-side merges do not guarantee that local environments are synchronized.
+
+Execution rule:
+- No new task execution should begin until local main is confirmed up-to-date.
+- Executors should propose or perform local sync before starting a new task if merge occurred outside the current environment.
