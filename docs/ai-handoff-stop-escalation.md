@@ -126,3 +126,14 @@ GitHub-side merges do not guarantee that local environments are synchronized.
 Execution rule:
 - No new task execution should begin until local main is confirmed up-to-date.
 - Executors should propose or perform local sync before starting a new task if merge occurred outside the current environment.
+
+## 13. Retry Ceiling and No Silent Loop Rule
+
+Agents must not continue retrying indefinitely.
+
+If the same or materially similar failure occurs repeatedly without producing new evidence, the agent must stop and escalate.
+
+Minimum rule:
+- after 2 repeated failed retries with no new evidence, emit a blocked execution report
+- do not continue silent looping
+- include the last known error, attempted fixes, and the exact next required decision
