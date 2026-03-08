@@ -9,9 +9,9 @@ from typing import Any, Dict, List
 from runtime.discovery import DiscoveryResult, discover
 from runtime.evidence import CloseSummary, ExecutionSummary, build_evidence, persist_evidence
 from runtime.loader import LoaderContract
-from runtime.policy import evaluate_preflight
+from runtime.policy import CANONICAL_OPERATORS, GateResult, PreflightResult, evaluate_preflight
 from runtime.state import close_state, init_state, set_status
-from runtime.trigger import normalize_trigger
+from runtime.trigger import CANONICAL_TRIGGER_TYPES, normalize_trigger
 
 
 @dataclass(frozen=True)
@@ -126,8 +126,38 @@ def _build_task_evidence(discovery: DiscoveryResult) -> Dict[str, Any]:
     }
 
 
+def _build_fallback_preflight(contract: LoaderContract, reason: str) -> PreflightResult:
+    gate_a_passed = (
+        contract.trigger_type.lower() in CANONICAL_TRIGGER_TYPES
+        and contract.requested_operator in CANONICAL_OPERATORS
+    )
+    gate_a_reason = (
+        "canonical set matched"
+        if gate_a_passed
+        else "trigger_type/requested_operator is outside canonical set"
+    )
+    return PreflightResult(
+        gate_a=GateResult(gate="Gate A (Canonical Set)", passed=gate_a_passed, reason=gate_a_reason),
+        gate_b=GateResult(gate="Gate B (Runtime Policy)", passed=False, reason=reason),
+    )
+
+
+def _build_minimal_task_evidence(contract: LoaderContract) -> Dict[str, Any]:
+    return {
+        "task_ref": contract.task_package_ref,
+        "task_resolved": None,
+        "task_id": None,
+        "task_type": None,
+        "bundle_ref": contract.runtime_bundle_ref,
+        "bundle_resolved": None,
+        "bundle_id": None,
+        "bundle_version": None,
+    }
+
+
 def run_runtime(contract: LoaderContract, retry_counter: int = 0) -> RuntimeResult:
     state = init_state(contract, retry_counter)
+    discovery: DiscoveryResult | None = None
 
     try:
         set_status(state, "loading")
@@ -175,8 +205,15 @@ def run_runtime(contract: LoaderContract, retry_counter: int = 0) -> RuntimeResu
         return RuntimeResult(ok=execution.success, evidence=evidence)
     except Exception as exc:
         close_state(state, status="failed", error=str(exc))
-        fallback_discovery = discover(contract)
-        fallback_preflight = evaluate_preflight(contract, fallback_discovery)
+        if discovery is not None:
+            fallback_preflight = evaluate_preflight(contract, discovery)
+            task_evidence = _build_task_evidence(discovery)
+        else:
+            fallback_preflight = _build_fallback_preflight(
+                contract,
+                reason="discovery is unavailable because discovery step failed",
+            )
+            task_evidence = _build_minimal_task_evidence(contract)
         execution = ExecutionSummary(
             success=False,
             action="execute_error",
@@ -195,7 +232,7 @@ def run_runtime(contract: LoaderContract, retry_counter: int = 0) -> RuntimeResu
             fallback_preflight,
             execution,
             close_summary,
-            _build_task_evidence(fallback_discovery),
+            task_evidence,
         )
         evidence["evidence_file"] = persist_evidence(evidence)
         return RuntimeResult(ok=False, evidence=evidence)

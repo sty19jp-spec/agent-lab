@@ -48,9 +48,6 @@ def evaluate_preflight(contract: LoaderContract, discovery: DiscoveryResult) -> 
     if contract.trigger_type.lower() == "event_stub" and contract.requested_operator != "Executor":
         gate_b_passed = False
         gate_b_reason = "event_stub trigger requires requested_operator=Executor"
-    elif not discovery.metadata:
-        gate_b_passed = False
-        gate_b_reason = "runtime metadata is missing"
     elif not task_resolved:
         gate_b_passed = False
         gate_b_reason = "task package could not be resolved"
