@@ -1,0 +1,62 @@
+{
+  "task_evidence": {
+    "task_ref": "task://docs-validation",
+    "task_resolved": "/home/shun/agent-lab/task/docs-validation/task.yaml",
+    "task_id": "docs_validation_minimal",
+    "task_type": "docs_validation",
+    "bundle_ref": "bundle://local-docs-validator",
+    "bundle_resolved": "/home/shun/agent-lab/bundle/local-docs-validator/bundle.yaml",
+    "bundle_id": "local-docs-validator",
+    "bundle_version": "0.1.0"
+  },
+  "execution_evidence": {
+    "success": true,
+    "action": "docs_validation",
+    "operator": "Executor",
+    "detail": "docs validation passed",
+    "outputs": {
+      "validation_report": "/home/shun/agent-lab/examples/evidence/docs-validation-report.json",
+      "checked_files": 2,
+      "missing_files": 0
+    }
+  },
+  "execution_summary": {
+    "success": true,
+    "action": "docs_validation",
+    "operator": "Executor",
+    "detail": "docs validation passed",
+    "outputs": {
+      "validation_report": "/home/shun/agent-lab/examples/evidence/docs-validation-report.json",
+      "checked_files": 2,
+      "missing_files": 0
+    }
+  },
+  "preflight_summary": {
+    "passed": true,
+    "gate_a": {
+      "gate": "Gate A (Canonical Set)",
+      "passed": true,
+      "reason": "canonical set matched"
+    },
+    "gate_b": {
+      "gate": "Gate B (Runtime Policy)",
+      "passed": true,
+      "reason": "runtime policy passed"
+    }
+  },
+  "close_summary": {
+    "run_id": "run-4394b8477a3bbf84-0",
+    "status": "closed",
+    "dedup_key": "4394b8477a3bbf84",
+    "retry_counter": 0
+  },
+  "run_state": {
+    "run_id": "run-4394b8477a3bbf84-0",
+    "status": "closed",
+    "dedup_key": "4394b8477a3bbf84",
+    "retry_counter": 0,
+    "started_at": "2026-03-08T10:13:05.181431+00:00",
+    "ended_at": "2026-03-08T10:13:05.200381+00:00",
+    "error": null
+  }
+}

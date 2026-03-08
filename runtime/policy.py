@@ -37,17 +37,32 @@ def evaluate_preflight(contract: LoaderContract, discovery: DiscoveryResult) -> 
         else "trigger_type/requested_operator is outside canonical set"
     )
 
-    # Minimal runtime policy:
-    # - event_stub trigger must execute via Executor
-    # - discovery metadata must exist
     gate_b_passed = True
     gate_b_reason = "runtime policy passed"
+
+    task_resolved = discovery.task_package.get("exists", False)
+    bundle_resolved = discovery.runtime_bundle.get("exists", False)
+    task_doc = discovery.task_package.get("document", {})
+    bundle_doc = discovery.runtime_bundle.get("document", {})
+
     if contract.trigger_type.lower() == "event_stub" and contract.requested_operator != "Executor":
         gate_b_passed = False
         gate_b_reason = "event_stub trigger requires requested_operator=Executor"
     elif not discovery.metadata:
         gate_b_passed = False
         gate_b_reason = "runtime metadata is missing"
+    elif not task_resolved:
+        gate_b_passed = False
+        gate_b_reason = "task package could not be resolved"
+    elif not bundle_resolved:
+        gate_b_passed = False
+        gate_b_reason = "runtime bundle could not be resolved"
+    elif task_doc.get("operator") != contract.requested_operator:
+        gate_b_passed = False
+        gate_b_reason = "requested_operator does not match task operator"
+    elif bundle_doc.get("executor") != contract.requested_operator:
+        gate_b_passed = False
+        gate_b_reason = "requested_operator does not match bundle executor"
 
     return PreflightResult(
         gate_a=GateResult(gate="Gate A (Canonical Set)", passed=gate_a_passed, reason=gate_a_reason),

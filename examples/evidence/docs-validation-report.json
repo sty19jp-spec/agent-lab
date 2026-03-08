@@ -1,0 +1,22 @@
+{
+  "task_id": "docs_validation_minimal",
+  "task_type": "docs_validation",
+  "bundle_id": "local-docs-validator",
+  "bundle_version": "0.1.0",
+  "checked_at": "2026-03-08T10:13:05.199458+00:00",
+  "checks": [
+    {
+      "path": "/home/shun/agent-lab/README.md",
+      "exists": true,
+      "is_markdown": true,
+      "size_bytes": 3417
+    },
+    {
+      "path": "/home/shun/agent-lab/docs/AI-task-protocol.md",
+      "exists": true,
+      "is_markdown": true,
+      "size_bytes": 1822
+    }
+  ],
+  "missing_count": 0
+}

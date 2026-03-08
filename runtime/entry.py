@@ -9,7 +9,7 @@ from runtime.loader import load_contract
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Phase22 minimal AI Execution Runtime entrypoint")
+    parser = argparse.ArgumentParser(description="Phase23 minimal AI Task Package Execution entrypoint")
     parser.add_argument("--task-package-ref", required=True)
     parser.add_argument("--runtime-bundle-ref", required=True)
     parser.add_argument("--trigger-type", required=True)
