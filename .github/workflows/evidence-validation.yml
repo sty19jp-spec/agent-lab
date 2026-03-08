@@ -1,0 +1,51 @@
+name: Evidence Validation
+
+on:
+  pull_request:
+    paths:
+      - "tools/evidence_validator.py"
+      - "examples/evidence/*-evidence.json"
+      - "runtime/*.py"
+      - "docs/execution-evidence-schema.md"
+      - ".github/workflows/evidence-validation.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "tools/evidence_validator.py"
+      - "examples/evidence/*-evidence.json"
+      - "runtime/*.py"
+      - "docs/execution-evidence-schema.md"
+      - ".github/workflows/evidence-validation.yml"
+
+jobs:
+  validate-evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run evidence validator (strict)
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(examples/evidence/*-evidence.json)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No *-evidence.json files found under examples/evidence"
+            exit 1
+          fi
+          for f in "${files[@]}"; do
+            echo "Validating $f"
+            python3 tools/evidence_validator.py \
+              --evidence-file "$f" \
+              --schema-name execution-evidence \
+              --schema-version v1 \
+              --policy strict \
+              --ci-mode
+          done
