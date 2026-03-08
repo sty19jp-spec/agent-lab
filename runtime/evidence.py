@@ -32,6 +32,7 @@ def build_evidence(
     execution: ExecutionSummary,
     close_summary: CloseSummary,
     task_evidence: Dict[str, Any],
+    provenance: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     execution_evidence = {
         "success": execution.success,
@@ -40,7 +41,7 @@ def build_evidence(
         "detail": execution.detail,
         "outputs": execution.outputs,
     }
-    return {
+    evidence = {
         "task_evidence": task_evidence,
         "execution_evidence": execution_evidence,
         "execution_summary": asdict(execution),
@@ -52,6 +53,9 @@ def build_evidence(
         "close_summary": asdict(close_summary),
         "run_state": state_to_dict(state),
     }
+    if provenance is not None:
+        evidence["provenance"] = provenance
+    return evidence
 
 
 def persist_evidence(evidence: Dict[str, Any], output_path: str | None = None) -> str:
