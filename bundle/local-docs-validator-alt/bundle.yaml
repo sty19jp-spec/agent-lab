@@ -1,0 +1,13 @@
+{
+  "bundle_id": "local-docs-validator-alt",
+  "bundle_version": "0.1.0",
+  "executor": "Executor",
+  "resources": {
+    "workspace_root": ".",
+    "network": "disabled"
+  },
+  "policy": {
+    "allow_repo_local_only": true,
+    "require_external_api": false
+  }
+}

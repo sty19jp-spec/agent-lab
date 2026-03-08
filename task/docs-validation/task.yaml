@@ -1,0 +1,19 @@
+{
+  "task_id": "docs_validation_minimal",
+  "task_type": "docs_validation",
+  "operator": "Executor",
+  "bundle": "bundle://local-docs-validator",
+  "contract": {
+    "contract_id": "docs_validation.v1"
+  },
+  "input": {
+    "target_files": [
+      "README.md",
+      "docs/AI-task-protocol.md"
+    ]
+  },
+  "output": {
+    "report_path": "examples/evidence/docs-validation-report.json",
+    "evidence_path": "examples/evidence/docs-validation-evidence.json"
+  }
+}
