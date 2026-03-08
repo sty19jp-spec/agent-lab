@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from runtime.discovery import DiscoveryResult, discover
 from runtime.evidence import CloseSummary, ExecutionSummary, build_evidence, persist_evidence
+from runtime.provenance import build_provenance
 from runtime.loader import LoaderContract
 from runtime.policy import CANONICAL_OPERATORS, GateResult, PreflightResult, evaluate_preflight
 from runtime.state import close_state, init_state, set_status
@@ -184,7 +185,21 @@ def run_runtime(contract: LoaderContract, retry_counter: int = 0) -> RuntimeResu
                 dedup_key=state.dedup_key,
                 retry_counter=state.retry_counter,
             )
-            evidence = build_evidence(state, preflight, execution, close_summary, task_evidence)
+            provenance = build_provenance(
+                contract=contract,
+                state=state,
+                task_evidence=task_evidence,
+                task_document=discovery.task_package.get("document", {}),
+                trigger_type=discovery.metadata.get("trigger_type"),
+            )
+            evidence = build_evidence(
+                state,
+                preflight,
+                execution,
+                close_summary,
+                task_evidence,
+                provenance=provenance,
+            )
             evidence["evidence_file"] = persist_evidence(evidence)
             return RuntimeResult(ok=False, evidence=evidence)
 
@@ -199,7 +214,21 @@ def run_runtime(contract: LoaderContract, retry_counter: int = 0) -> RuntimeResu
             dedup_key=state.dedup_key,
             retry_counter=state.retry_counter,
         )
-        evidence = build_evidence(state, preflight, execution, close_summary, task_evidence)
+        provenance = build_provenance(
+            contract=contract,
+            state=state,
+            task_evidence=task_evidence,
+            task_document=discovery.task_package.get("document", {}),
+            trigger_type=discovery.metadata.get("trigger_type"),
+        )
+        evidence = build_evidence(
+            state,
+            preflight,
+            execution,
+            close_summary,
+            task_evidence,
+            provenance=provenance,
+        )
         evidence_output = discovery.task_package.get("document", {}).get("output", {}).get("evidence_path")
         evidence["evidence_file"] = persist_evidence(evidence, output_path=evidence_output)
         return RuntimeResult(ok=execution.success, evidence=evidence)
@@ -227,12 +256,22 @@ def run_runtime(contract: LoaderContract, retry_counter: int = 0) -> RuntimeResu
             dedup_key=state.dedup_key,
             retry_counter=state.retry_counter,
         )
+        task_document = discovery.task_package.get("document", {}) if discovery is not None else {}
+        trigger_type = discovery.metadata.get("trigger_type") if discovery is not None else contract.trigger_type
+        provenance = build_provenance(
+            contract=contract,
+            state=state,
+            task_evidence=task_evidence,
+            task_document=task_document,
+            trigger_type=trigger_type,
+        )
         evidence = build_evidence(
             state,
             fallback_preflight,
             execution,
             close_summary,
             task_evidence,
+            provenance=provenance,
         )
         evidence["evidence_file"] = persist_evidence(evidence)
         return RuntimeResult(ok=False, evidence=evidence)
