@@ -1,0 +1,6 @@
+version: "phase24-v1"
+tasks:
+  - ref: "task://docs-validation"
+    path: "task/docs-validation/task.yaml"
+    task_id: "docs_validation_minimal"
+    owner: "Executor"

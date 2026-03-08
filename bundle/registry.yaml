@@ -1,0 +1,10 @@
+version: "phase24-v1"
+bundles:
+  - ref: "bundle://local-docs-validator"
+    path: "bundle/local-docs-validator/bundle.yaml"
+    bundle_id: "local-docs-validator"
+    executor: "Executor"
+  - ref: "bundle://local-docs-validator-alt"
+    path: "bundle/local-docs-validator-alt/bundle.yaml"
+    bundle_id: "local-docs-validator-alt"
+    executor: "Executor"

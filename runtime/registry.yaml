@@ -1,0 +1,16 @@
+version: "phase24-v1"
+runtime:
+  module_entrypoint: "runtime.entry"
+  discovery_module: "runtime.discovery"
+  policy_module: "runtime.policy"
+  execution_mode:
+    executor: "codex-cli"
+    ask_for_approval: "never"
+    interactive_approval: false
+    escalation_only_for:
+      - "destructive-operation"
+      - "security-related-operation"
+  environment:
+    baseline: "wsl-ubuntu"
+  source_of_truth:
+    repository: "github-main"
