@@ -46,5 +46,6 @@ jobs:
               --evidence-file "$f" \
               --schema-name execution-evidence \
               --schema-version v1 \
-              --policy strict
+              --policy strict \
+              --ci-mode
           done

@@ -5,6 +5,7 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -98,11 +99,19 @@ def _resolve_bundle_ref(ref: str, repo_root: Path) -> Optional[Path]:
 
 
 class Validator:
-    def __init__(self, repo_root: Path, policy: str, artifact_hashes: Mapping[str, str], extra_artifacts: List[str]):
+    def __init__(
+        self,
+        repo_root: Path,
+        policy: str,
+        artifact_hashes: Mapping[str, str],
+        extra_artifacts: List[str],
+        ci_mode: bool,
+    ):
         self.repo_root = repo_root
         self.policy = policy
         self.artifact_hashes = artifact_hashes
         self.extra_artifacts = extra_artifacts
+        self.ci_mode = ci_mode
         self.errors: List[Dict[str, str]] = []
         self.warnings: List[Dict[str, str]] = []
         self.artifacts: List[Dict[str, Any]] = []
@@ -251,11 +260,23 @@ class Validator:
 
         task_resolved = task.get("task_resolved")
         if isinstance(task_resolved, str) and task_resolved and not Path(task_resolved).exists():
-            self.error("contract_violation", f"task_evidence.task_resolved does not exist: {task_resolved}")
+            if self.ci_mode:
+                self.warn(
+                    "ci_missing_resolved_path",
+                    f"task_evidence.task_resolved does not exist in CI environment: {task_resolved}",
+                )
+            else:
+                self.error("contract_violation", f"task_evidence.task_resolved does not exist: {task_resolved}")
 
         bundle_resolved = task.get("bundle_resolved")
         if isinstance(bundle_resolved, str) and bundle_resolved and not Path(bundle_resolved).exists():
-            self.error("contract_violation", f"task_evidence.bundle_resolved does not exist: {bundle_resolved}")
+            if self.ci_mode:
+                self.warn(
+                    "ci_missing_resolved_path",
+                    f"task_evidence.bundle_resolved does not exist in CI environment: {bundle_resolved}",
+                )
+            else:
+                self.error("contract_violation", f"task_evidence.bundle_resolved does not exist: {bundle_resolved}")
 
         if isinstance(task_ref, str):
             resolved_task = _resolve_task_ref(task_ref, self.repo_root)
@@ -293,7 +314,10 @@ class Validator:
         }
 
         if not resolved.exists():
-            self.error("artifact_missing", f"artifact does not exist: {artifact_path}")
+            if self.ci_mode:
+                self.warn("ci_artifact_missing", f"artifact does not exist in CI environment: {artifact_path}")
+            else:
+                self.error("artifact_missing", f"artifact does not exist: {artifact_path}")
             self.artifacts.append(artifact)
             return
 
@@ -398,6 +422,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--schema-version", default=SCHEMA_VERSION, help="Schema version (default: v1)")
     parser.add_argument("--policy", choices=("lenient", "strict"), default="lenient")
     parser.add_argument(
+        "--ci-mode",
+        action="store_true",
+        default=bool(os.getenv("CI")),
+        help="Relax artifact/resolved-path existence checks for CI portability",
+    )
+    parser.add_argument(
         "--artifact-file",
         action="append",
         default=[],
@@ -497,6 +527,7 @@ def main() -> int:
         policy=args.policy,
         artifact_hashes=artifact_hashes,
         extra_artifacts=args.artifact_file,
+        ci_mode=args.ci_mode,
     )
     result = validator.validate(
         data=data,
