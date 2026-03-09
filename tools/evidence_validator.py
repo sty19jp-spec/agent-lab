@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 from typing import Any, Dict, List, Mapping, Optional
 
@@ -115,6 +116,7 @@ class Validator:
         self.errors: List[Dict[str, str]] = []
         self.warnings: List[Dict[str, str]] = []
         self.artifacts: List[Dict[str, Any]] = []
+        self._git_head_cache: Optional[str] = None
 
     def error(self, code: str, message: str) -> None:
         self.errors.append({"code": code, "message": message})
@@ -358,6 +360,187 @@ class Validator:
             expected_hash = self.artifact_hashes.get(artifact_path)
             self._validate_artifact(artifact_path, expected_hash, source="cli")
 
+    def _require_prov_string(self, obj: Mapping[str, Any], key: str, label: str) -> None:
+        if self._require_key(obj, key, label):
+            val = obj.get(key)
+            if not isinstance(val, str):
+                self.error("invalid_type", f"{label}.{key} must be string")
+
+    def _require_prov_bool(self, obj: Mapping[str, Any], key: str, label: str) -> None:
+        if self._require_key(obj, key, label):
+            val = obj.get(key)
+            if not isinstance(val, bool):
+                self.error("invalid_type", f"{label}.{key} must be bool")
+
+    def _require_prov_non_negative_int(self, obj: Mapping[str, Any], key: str, label: str) -> None:
+        if self._require_key(obj, key, label):
+            val = obj.get(key)
+            if not _is_non_negative_int(val):
+                self.error("invalid_type", f"{label}.{key} must be non-negative integer")
+
+    def _parse_rfc3339(self, value: Any, field_label: str) -> Optional[datetime]:
+        if not isinstance(value, str):
+            self.error("invalid_type", f"{field_label} must be string")
+            return None
+        raw = value.strip()
+        if not raw:
+            self.error("invalid_value", f"{field_label} must not be empty")
+            return None
+        normalized = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            self.error("invalid_timestamp", f"{field_label} must be valid RFC3339 timestamp")
+            return None
+        if parsed.tzinfo is None:
+            self.error("invalid_timestamp", f"{field_label} must include timezone offset")
+            return None
+        return parsed.astimezone(timezone.utc)
+
+    def _git_head_commit(self) -> Optional[str]:
+        if self._git_head_cache is not None:
+            return self._git_head_cache
+        try:
+            out = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                cwd=self.repo_root,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+            commit = out.strip()
+            self._git_head_cache = commit if commit else ""
+            return self._git_head_cache or None
+        except (FileNotFoundError, subprocess.CalledProcessError, OSError):
+            self._git_head_cache = ""
+            return None
+
+    def _validate_execution_identity(self, data: Mapping[str, Any]) -> None:
+        label = "provenance.execution_identity"
+        self._require_prov_string(data, "executor_id", label)
+        self._require_prov_string(data, "executor_type", label)
+        self._require_prov_string(data, "operator", label)
+
+    def _validate_runtime_fingerprint(self, data: Mapping[str, Any]) -> None:
+        label = "provenance.runtime_fingerprint"
+        self._require_prov_string(data, "runtime_name", label)
+        self._require_prov_string(data, "runtime_version", label)
+        self._require_prov_string(data, "bundle_version", label)
+        self._require_prov_string(data, "task_version", label)
+
+    def _validate_repository_state(self, data: Mapping[str, Any]) -> None:
+        label = "provenance.repository_state"
+        self._require_prov_string(data, "repository_commit", label)
+        self._require_prov_string(data, "repository_branch", label)
+        self._require_prov_bool(data, "repository_dirty", label)
+
+        repo_commit = data.get("repository_commit")
+        if isinstance(repo_commit, str) and repo_commit.strip():
+            head = self._git_head_commit()
+            if head is None:
+                self.warn("repo_commit_unverified", "unable to resolve current git HEAD for provenance verification")
+            elif repo_commit.strip() != head:
+                self.error(
+                    "provenance_commit_mismatch",
+                    f"provenance.repository_state.repository_commit does not match HEAD ({head})",
+                )
+
+    def _validate_execution_context(self, data: Mapping[str, Any], run_state: Mapping[str, Any]) -> None:
+        label = "provenance.execution_context"
+        self._require_prov_string(data, "execution_timestamp", label)
+        self._require_prov_string(data, "trigger_type", label)
+        self._require_prov_non_negative_int(data, "retry_counter", label)
+
+        exec_ts = self._parse_rfc3339(data.get("execution_timestamp"), f"{label}.execution_timestamp")
+        if exec_ts is not None:
+            if exec_ts > datetime.now(timezone.utc):
+                self.error(
+                    "provenance_timestamp_future",
+                    "provenance.execution_context.execution_timestamp must not be in the future",
+                )
+
+            started = self._parse_rfc3339(run_state.get("started_at"), "run_state.started_at")
+            ended_raw = run_state.get("ended_at")
+            ended = None if ended_raw is None else self._parse_rfc3339(ended_raw, "run_state.ended_at")
+
+            if started is not None and exec_ts < started:
+                self.error(
+                    "provenance_timestamp_inconsistent",
+                    "execution_timestamp must be >= run_state.started_at",
+                )
+            if ended is not None and exec_ts > ended:
+                self.error(
+                    "provenance_timestamp_inconsistent",
+                    "execution_timestamp must be <= run_state.ended_at",
+                )
+
+        run_retry = run_state.get("retry_counter")
+        prov_retry = data.get("retry_counter")
+        if _is_non_negative_int(run_retry) and _is_non_negative_int(prov_retry) and run_retry != prov_retry:
+            self.error(
+                "inconsistent_value",
+                "provenance.execution_context.retry_counter must equal run_state.retry_counter",
+            )
+
+    def _validate_provenance(self, data: Dict[str, Any]) -> None:
+        provenance = data.get("provenance")
+        run_state = data.get("run_state")
+        if isinstance(run_state, dict):
+            status = run_state.get("status")
+            if status in {"closed", "failed", "blocked"} and provenance is None:
+                # Legacy evidence without provenance is accepted for backward compatibility.
+                self.warn(
+                    "compat_missing_provenance",
+                    f"provenance is missing for run_state.status={status}; accepted for backward compatibility",
+                )
+
+        # Per compatibility policy, provenance validation runs only when provenance exists.
+        if provenance is None:
+            return
+        if not isinstance(provenance, dict):
+            self.error("invalid_type", "provenance must be an object")
+            return
+
+        for key in ("execution_identity", "runtime_fingerprint", "repository_state", "execution_context"):
+            if not self._require_key(provenance, key, "provenance"):
+                continue
+            if not isinstance(provenance.get(key), dict):
+                self.error("invalid_type", f"provenance.{key} must be an object")
+
+        execution_identity = provenance.get("execution_identity")
+        if isinstance(execution_identity, dict):
+            self._validate_execution_identity(execution_identity)
+            exe = data.get("execution_evidence")
+            if isinstance(exe, dict):
+                operator = execution_identity.get("operator")
+                if isinstance(operator, str) and operator != exe.get("operator"):
+                    self.error(
+                        "inconsistent_value",
+                        "provenance.execution_identity.operator must equal execution_evidence.operator",
+                    )
+
+        runtime_fingerprint = provenance.get("runtime_fingerprint")
+        if isinstance(runtime_fingerprint, dict):
+            self._validate_runtime_fingerprint(runtime_fingerprint)
+            task = data.get("task_evidence")
+            if isinstance(task, dict):
+                bundle_version = runtime_fingerprint.get("bundle_version")
+                if isinstance(bundle_version, str) and task.get("bundle_version") not in (None, bundle_version):
+                    self.error(
+                        "inconsistent_value",
+                        "provenance.runtime_fingerprint.bundle_version must equal task_evidence.bundle_version",
+                    )
+
+        repository_state = provenance.get("repository_state")
+        if isinstance(repository_state, dict):
+            self._validate_repository_state(repository_state)
+
+        execution_context = provenance.get("execution_context")
+        if isinstance(execution_context, dict):
+            self._validate_execution_context(
+                execution_context,
+                run_state if isinstance(run_state, dict) else {},
+            )
+
     def validate(self, data: Dict[str, Any], evidence_path: Path, schema_name: str, schema_version: str) -> Dict[str, Any]:
         if schema_name != SCHEMA_NAME:
             self.error("schema_name_mismatch", f"unsupported schema_name: {schema_name}")
@@ -373,6 +556,7 @@ class Validator:
         if self.policy == "strict":
             self._validate_deep_schema(data)
             self._validate_cross_field(data)
+            self._validate_provenance(data)
             self._validate_runtime_contract(data)
             self._validate_artifacts(data, evidence_path)
         else:
@@ -413,6 +597,18 @@ def _parse_artifact_hashes(raw_items: List[str]) -> Dict[str, str]:
             raise ValueError(f"invalid --artifact-hash value: {item}; expected non-empty <path>=<sha256>")
         out[path] = digest
     return out
+
+
+def validate_provenance(evidence_json: Dict[str, Any], repo_root: Path = REPO_ROOT) -> Dict[str, List[Dict[str, str]]]:
+    validator = Validator(
+        repo_root=repo_root,
+        policy="strict",
+        artifact_hashes={},
+        extra_artifacts=[],
+        ci_mode=False,
+    )
+    validator._validate_provenance(evidence_json)
+    return {"errors": validator.errors, "warnings": validator.warnings}
 
 
 def parse_args() -> argparse.Namespace:
