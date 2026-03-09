@@ -1,0 +1,64 @@
+name: PR Readiness Validator
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      pr_body:
+        description: "PR body markdown for manual validation"
+        required: true
+        type: string
+      base_sha:
+        description: "Optional base commit SHA override"
+        required: false
+        type: string
+      head_ref:
+        description: "Optional head branch override"
+        required: false
+        type: string
+
+jobs:
+  validate-pr-readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run PR readiness validator
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            body_file="/tmp/pr-body.md"
+            printf '%s\n' "${{ inputs.pr_body }}" > "$body_file"
+
+            base_sha="${{ inputs.base_sha }}"
+            if [ -z "$base_sha" ]; then
+              git fetch --no-tags --depth=1 origin main
+              base_sha="$(git merge-base origin/main HEAD)"
+            fi
+
+            head_ref="${{ inputs.head_ref }}"
+            if [ -z "$head_ref" ]; then
+              head_ref="${{ github.ref_name }}"
+            fi
+
+            python3 tools/pr_readiness_validator.py \
+              --repo-root . \
+              --pr-body-file "$body_file" \
+              --head-ref "$head_ref" \
+              --base-sha "$base_sha" \
+              --head-sha "${{ github.sha }}"
+          else
+            python3 tools/pr_readiness_validator.py \
+              --repo-root . \
+              --event-path "${GITHUB_EVENT_PATH}"
+          fi
