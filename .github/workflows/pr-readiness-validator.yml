@@ -58,7 +58,13 @@ jobs:
               --base-sha "$base_sha" \
               --head-sha "${{ github.sha }}"
           else
+            body_file="/tmp/pr-body.md"
+            jq -r '.pull_request.body' "$GITHUB_EVENT_PATH" > "$body_file"
+
             python3 tools/pr_readiness_validator.py \
               --repo-root . \
-              --event-path "${GITHUB_EVENT_PATH}"
+              --pr-body-file "$body_file" \
+              --head-ref "${{ github.head_ref }}" \
+              --base-sha "${{ github.event.pull_request.base.sha }}" \
+              --head-sha "${{ github.sha }}"
           fi
