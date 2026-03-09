@@ -57,6 +57,9 @@ Validates:
 - branch naming (`codex/phase[0-9]+-.*`)
 - completion condition token (`PR-ready`)
 
+PR metadata requirement:
+- PR body should include the literal token `PR-ready` in completion-related content so completion-condition validation can deterministically pass.
+
 Stage failure behavior:
 - fail stage
 - stop chain progression to downstream stage
