@@ -1,0 +1,154 @@
+name: Validator Chain
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      pr_body:
+        description: "PR body markdown for manual validation"
+        required: true
+        type: string
+      base_sha:
+        description: "Optional base SHA override"
+        required: false
+        type: string
+      head_sha:
+        description: "Optional head SHA override"
+        required: false
+        type: string
+      head_ref:
+        description: "Optional head ref override"
+        required: false
+        type: string
+
+jobs:
+  evidence-provenance:
+    name: Evidence and Provenance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run evidence validator for changed evidence files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            base_sha="${{ inputs.base_sha }}"
+            if [ -z "$base_sha" ]; then
+              git fetch --no-tags --depth=1 origin main
+              base_sha="$(git merge-base origin/main HEAD)"
+            fi
+
+            head_sha="${{ inputs.head_sha }}"
+            if [ -z "$head_sha" ]; then
+              head_sha="${{ github.sha }}"
+            fi
+          else
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            head_sha="${{ github.event.pull_request.head.sha }}"
+          fi
+
+          mapfile -t evidence_files < <(git diff --name-only "$base_sha...$head_sha" | grep '^examples/evidence/.*-evidence\.json$' || true)
+
+          if [ ${#evidence_files[@]} -eq 0 ]; then
+            echo "No changed evidence JSON files detected; treating Evidence/Provenance stage as PASS"
+            exit 0
+          fi
+
+          for f in "${evidence_files[@]}"; do
+            echo "Validating $f"
+            python3 tools/evidence_validator.py \
+              --evidence-file "$f" \
+              --schema-name execution-evidence \
+              --schema-version v1 \
+              --policy strict \
+              --ci-mode
+          done
+
+  pr-readiness:
+    name: PR Readiness
+    runs-on: ubuntu-latest
+    needs: evidence-provenance
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run PR readiness validator
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            body_file="/tmp/pr-body.md"
+            printf '%s\n' "${{ inputs.pr_body }}" > "$body_file"
+
+            base_sha="${{ inputs.base_sha }}"
+            if [ -z "$base_sha" ]; then
+              git fetch --no-tags --depth=1 origin main
+              base_sha="$(git merge-base origin/main HEAD)"
+            fi
+
+            head_sha="${{ inputs.head_sha }}"
+            if [ -z "$head_sha" ]; then
+              head_sha="${{ github.sha }}"
+            fi
+
+            head_ref="${{ inputs.head_ref }}"
+            if [ -z "$head_ref" ]; then
+              head_ref="${{ github.ref_name }}"
+            fi
+
+            python3 tools/pr_readiness_validator.py \
+              --repo-root . \
+              --pr-body-file "$body_file" \
+              --head-ref "$head_ref" \
+              --base-sha "$base_sha" \
+              --head-sha "$head_sha"
+          else
+            python3 tools/pr_readiness_validator.py \
+              --repo-root . \
+              --event-path "${GITHUB_EVENT_PATH}"
+          fi
+
+  chain-result:
+    name: Chain Result
+    runs-on: ubuntu-latest
+    needs:
+      - pr-readiness
+      - evidence-provenance
+    if: always()
+    steps:
+      - name: Publish PASS/FAIL
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pr_status="${{ needs.pr-readiness.result }}"
+          ev_status="${{ needs.evidence-provenance.result }}"
+
+          echo "PR Readiness job result: $pr_status"
+          echo "Evidence/Provenance job result: $ev_status"
+
+          if [ "$pr_status" = "success" ] && [ "$ev_status" = "success" ]; then
+            echo "PASS"
+            exit 0
+          fi
+
+          echo "FAIL"
+          exit 1
