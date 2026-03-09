@@ -123,3 +123,16 @@ This provenance model remains aligned with project controls:
 - evidence and provenance remain repository-visible
 - no interactive approval dependency for normal execution
 - escalation remains limited to destructive/security-related operations
+
+## 13. Phase32 Validator Integrity Checks
+Phase32 extends `tools/evidence_validator.py` to make provenance machine-verifiable when provenance exists.
+
+Validation layers:
+- Layer1: provenance schema/type checks for `execution_identity`, `runtime_fingerprint`, `repository_state`, `execution_context`
+- Layer2: provenance presence/completeness handling tied to `run_state` compatibility rules
+- Layer3: repository commit integrity check (`provenance.repository_state.repository_commit` vs `git rev-parse HEAD`)
+- Layer4: timestamp integrity checks for RFC3339 format, non-future values, and consistency with `run_state` timestamps
+
+Compatibility rule:
+- evidence without `provenance` remains acceptable for backward compatibility
+- provenance integrity checks are enforced when provenance is present
