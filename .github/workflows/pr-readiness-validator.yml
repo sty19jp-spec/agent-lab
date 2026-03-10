@@ -32,15 +32,15 @@ jobs:
           python-version: "3.12"
 
       - name: Run PR readiness validator
+        env:
+          PR_BODY_INPUT: ${{ inputs.pr_body }}
         shell: bash
         run: |
           set -euo pipefail
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             body_file="/tmp/pr-body.md"
-            cat > "$body_file" <<'EOF'
-            ${{ inputs.pr_body }}
-            EOF
+            printf '%s\n' "$PR_BODY_INPUT" > "$body_file"
 
             base_sha="${{ inputs.base_sha }}"
             if [ -z "$base_sha" ]; then
