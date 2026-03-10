@@ -88,7 +88,9 @@ class PRReadinessValidator:
         cleaned: List[str] = []
 
         def add(candidate: str) -> None:
-            norm = candidate.strip().strip("`").rstrip(".,:;").lstrip("./")
+            norm = candidate.strip().strip("`").rstrip(".,:;")
+            while norm.startswith("./"):
+                norm = norm[2:]
             if not norm or "/" not in norm or norm in cleaned:
                 return
 
