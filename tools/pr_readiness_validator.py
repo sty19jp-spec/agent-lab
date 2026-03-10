@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 from pathlib import Path
@@ -84,22 +85,40 @@ class PRReadinessValidator:
         return {k: "\n".join(v).strip() for k, v in sections.items()}
 
     def _extract_paths(self, text: str) -> List[str]:
-        candidates = re.findall(r"(?:^|\s|`)([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+)(?:`|\s|$)", text)
         cleaned: List[str] = []
 
-        for p in candidates:
-            norm = p.strip().strip("`").lstrip("./")
+        def add(candidate: str) -> None:
+            norm = candidate.strip().strip("`").rstrip(".,:;")
+            while norm.startswith("./"):
+                norm = norm[2:]
+            if not norm or "/" not in norm or norm in cleaned:
+                return
 
             if norm.startswith("codex/"):
-                continue
+                return
 
             if not any(norm.startswith(prefix) for prefix in ALLOWED_PATH_PREFIXES):
-                continue
+                return
 
-            if norm not in cleaned:
-                cleaned.append(norm)
+            cleaned.append(norm)
+
+        for line in text.splitlines():
+            for candidate in re.findall(r"`([^`]+)`", line):
+                add(candidate)
+
+            stripped = line.strip()
+            if stripped.startswith(("- ", "* ")):
+                stripped = stripped[2:].strip()
+
+            for candidate in re.findall(r"(?<!\S)([./A-Za-z0-9_*?\[\]-]+(?:/[./A-Za-z0-9_*?\[\]-]+)+)(?!\S)", stripped):
+                add(candidate)
 
         return cleaned
+
+    def _matches_declared_path(self, declared: str, actual: str) -> bool:
+        if any(ch in declared for ch in "*?[]"):
+            return fnmatch.fnmatch(actual, declared)
+        return declared == actual
 
     def _parse_pr_context(self, event_path: Optional[Path], args: argparse.Namespace) -> Tuple[str, str, str, str]:
         pr_body = ""
@@ -213,11 +232,12 @@ class PRReadinessValidator:
                 if pat.search(path):
                     self.error(f"diff scope validation failed: forbidden file pattern detected: {path}")
 
-        declared_set = set(declared_changed)
         changed_set = set(changed)
-        if declared_set:
-            missing_decl = sorted(changed_set - declared_set)
-            extra_decl = sorted(declared_set - changed_set)
+        if declared_changed:
+            missing_decl = sorted(p for p in changed if not any(self._matches_declared_path(spec, p) for spec in declared_changed))
+            extra_decl = sorted(
+                spec for spec in declared_changed if not any(self._matches_declared_path(spec, path) for path in changed_set)
+            )
             if extra_decl:
                 self.error("diff scope validation failed: Changed files section lists non-diff files: " + ", ".join(extra_decl))
 
