@@ -23,6 +23,8 @@ require_cmd curl
 require_cmd jq
 require_cmd tar
 require_cmd python3
+require_cmd git
+require_cmd stat
 
 WORKDIR="$(pwd)"
 OUTDIR="${WORKDIR}/.drive-sync-out"
@@ -108,6 +110,31 @@ drive_delete_file_if_exists() {
   fi
 }
 
+drive_delete_matching_files() {
+  local name_prefix="$1" parent="$2"
+  local q="name contains '${name_prefix}' and '${parent}' in parents and trashed=false"
+  local q_enc
+  q_enc="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "${q}")"
+  local file_ids
+  file_ids="$(curl -fsSL \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    "https://www.googleapis.com/drive/v3/files?includeItemsFromAllDrives=true&supportsAllDrives=true&q=${q_enc}&fields=files(id,name)" \
+    | jq -r '.files[]? | select(.name | startswith("'"${name_prefix}"'")) | .id')"
+
+  if [[ -n "${file_ids}" ]]; then
+    while IFS= read -r file_id; do
+      [[ -n "${file_id}" ]] || continue
+      log "  Trashing existing matching file (${file_id})..."
+      curl -fsSL -X PATCH \
+        -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d '{"trashed":true}' \
+        "https://www.googleapis.com/drive/v3/files/${file_id}?supportsAllDrives=true&fields=id" \
+        >/dev/null
+    done <<< "${file_ids}"
+  fi
+}
+
 drive_upload_file() {
   local local_path="$1" drive_name="$2" parent_id="$3"
   local boundary="drivesync_boundary_$$"
@@ -163,8 +190,17 @@ ARCHIVE_DIR="${OUTDIR}/archives"
 mkdir -p "${ARCHIVE_DIR}"
 
 YYYYMM="$(date -u +'%Y-%m')"
-ARCHIVE_LATEST="${ARCHIVE_DIR}/backup-latest.tar.gz"
-ARCHIVE_HISTORY="${ARCHIVE_DIR}/backup-${YYYYMM}.tar.gz"
+BRANCH="$(git branch --show-current)"
+COMMIT="$(git rev-parse --short HEAD)"
+
+[[ -n "${BRANCH}" ]] || die "failed to determine current branch"
+[[ -n "${COMMIT}" ]] || die "failed to determine current commit"
+
+LATEST_NAME="backup-${BRANCH}-${COMMIT}.tar.gz"
+HISTORY_NAME="backup-${YYYYMM}-${BRANCH}-${COMMIT}.tar.gz"
+
+ARCHIVE_LATEST="${ARCHIVE_DIR}/${LATEST_NAME}"
+ARCHIVE_HISTORY="${ARCHIVE_DIR}/${HISTORY_NAME}"
 
 log "Creating archive (excluding .git, .claude, .drive-sync-out)..."
 tar -czf "${ARCHIVE_LATEST}" \
@@ -172,17 +208,26 @@ tar -czf "${ARCHIVE_LATEST}" \
   --exclude='./.claude' \
   --exclude='./.drive-sync-out' \
   -C "${WORKDIR}" .
+
+tar -tzf "${ARCHIVE_LATEST}" >/dev/null
+ARCHIVE_SIZE="$(stat -c%s "${ARCHIVE_LATEST}")"
+if [[ "${ARCHIVE_SIZE}" -lt 1000 ]]; then
+  die "archive too small: ${ARCHIVE_SIZE} bytes"
+fi
+
 cp "${ARCHIVE_LATEST}" "${ARCHIVE_HISTORY}"
 log "Archive size: $(du -sh "${ARCHIVE_LATEST}" | cut -f1)"
+log "Archive latest name: ${LATEST_NAME}"
+log "Archive history name: ${HISTORY_NAME}"
 
 # ---- Step 2: Upload to latest/ ----
 log "Resolving latest/ folder..."
 LATEST_FOLDER_ID="$(drive_find_or_create_folder "latest" "${DRIVE_FOLDER_ID}")"
 log "latest/ id: ${LATEST_FOLDER_ID}"
 
-log "Uploading backup-latest.tar.gz..."
-drive_delete_file_if_exists "backup-latest.tar.gz" "${LATEST_FOLDER_ID}"
-LATEST_FILE_ID="$(drive_upload_file "${ARCHIVE_LATEST}" "backup-latest.tar.gz" "${LATEST_FOLDER_ID}")"
+log "Uploading ${LATEST_NAME}..."
+drive_delete_matching_files "backup-" "${LATEST_FOLDER_ID}"
+LATEST_FILE_ID="$(drive_upload_file "${ARCHIVE_LATEST}" "${LATEST_NAME}" "${LATEST_FOLDER_ID}")"
 log "Uploaded latest: ${LATEST_FILE_ID}"
 
 # ---- Steps 3-4: Upload to history/YYYY-MM/ ----
@@ -194,9 +239,9 @@ log "Resolving history/${YYYYMM}/ folder..."
 MONTH_FOLDER_ID="$(drive_find_or_create_folder "${YYYYMM}" "${HISTORY_FOLDER_ID}")"
 log "history/${YYYYMM}/ id: ${MONTH_FOLDER_ID}"
 
-log "Uploading backup-${YYYYMM}.tar.gz..."
-drive_delete_file_if_exists "backup-${YYYYMM}.tar.gz" "${MONTH_FOLDER_ID}"
-HISTORY_FILE_ID="$(drive_upload_file "${ARCHIVE_HISTORY}" "backup-${YYYYMM}.tar.gz" "${MONTH_FOLDER_ID}")"
+log "Uploading ${HISTORY_NAME}..."
+drive_delete_file_if_exists "${HISTORY_NAME}" "${MONTH_FOLDER_ID}"
+HISTORY_FILE_ID="$(drive_upload_file "${ARCHIVE_HISTORY}" "${HISTORY_NAME}" "${MONTH_FOLDER_ID}")"
 log "Uploaded history/${YYYYMM}: ${HISTORY_FILE_ID}"
 
 log "Drive Sync complete. latest=${LATEST_FILE_ID}  history/${YYYYMM}=${HISTORY_FILE_ID}"

@@ -26,6 +26,16 @@ ALLOWED_ADJACENT_ROOTS: Sequence[str] = (
     "tools/",
     ".github/workflows/",
 )
+ALLOWED_PATH_PREFIXES: Sequence[str] = (
+    "scripts/",
+    "tools/",
+    "docs/",
+    ".github/",
+    "tests/",
+    "examples/",
+    "runtime/",
+    "registry/",
+)
 
 
 class PRReadinessValidator:
@@ -74,12 +84,21 @@ class PRReadinessValidator:
         return {k: "\n".join(v).strip() for k, v in sections.items()}
 
     def _extract_paths(self, text: str) -> List[str]:
-        paths = re.findall(r"(?:^|\s|`)([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+)(?:`|\s|$)", text)
+        candidates = re.findall(r"(?:^|\s|`)([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+)(?:`|\s|$)", text)
         cleaned: List[str] = []
-        for p in paths:
-            norm = p.strip().strip("`")
+
+        for p in candidates:
+            norm = p.strip().strip("`").lstrip("./")
+
+            if norm.startswith("codex/"):
+                continue
+
+            if not any(norm.startswith(prefix) for prefix in ALLOWED_PATH_PREFIXES):
+                continue
+
             if norm not in cleaned:
                 cleaned.append(norm)
+
         return cleaned
 
     def _parse_pr_context(self, event_path: Optional[Path], args: argparse.Namespace) -> Tuple[str, str, str, str]:
