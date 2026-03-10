@@ -26,6 +26,16 @@ ALLOWED_ADJACENT_ROOTS: Sequence[str] = (
     "tools/",
     ".github/workflows/",
 )
+ALLOWED_PATH_PREFIXES: Sequence[str] = (
+    "scripts/",
+    "tools/",
+    "docs/",
+    ".github/",
+    "tests/",
+    "examples/",
+    "runtime/",
+    "registry/",
+)
 
 
 class PRReadinessValidator:
@@ -78,7 +88,7 @@ class PRReadinessValidator:
         cleaned: List[str] = []
         for p in paths:
             norm = p.strip().strip("`")
-            if norm not in cleaned:
+            if norm.startswith(ALLOWED_PATH_PREFIXES) and norm not in cleaned:
                 cleaned.append(norm)
         return cleaned
 
