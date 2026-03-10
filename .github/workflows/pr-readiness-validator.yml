@@ -38,7 +38,9 @@ jobs:
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             body_file="/tmp/pr-body.md"
-            printf '%s\n' "${{ inputs.pr_body }}" > "$body_file"
+            cat > "$body_file" <<'EOF'
+${{ inputs.pr_body }}
+EOF
 
             base_sha="${{ inputs.base_sha }}"
             if [ -z "$base_sha" ]; then
