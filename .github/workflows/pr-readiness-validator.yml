@@ -34,6 +34,8 @@ jobs:
       - name: Run PR readiness validator
         env:
           PR_BODY_INPUT: ${{ inputs.pr_body }}
+          EXECUTOR_NAME: github-actions
+          EXECUTOR_VERSION: ${{ github.workflow_ref }}
         shell: bash
         run: |
           set -euo pipefail
@@ -48,25 +50,38 @@ jobs:
               base_sha="$(git merge-base origin/main HEAD)"
             fi
 
+            head_sha="${{ github.sha }}"
             head_ref="${{ inputs.head_ref }}"
             if [ -z "$head_ref" ]; then
               head_ref="${{ github.ref_name }}"
             fi
 
-            python3 tools/pr_readiness_validator.py \
-              --repo-root . \
-              --pr-body-file "$body_file" \
+            bash scripts/pre-validate-pr.sh \
+              --body-file "$body_file" \
+              --validate-only \
+              --base main \
               --head-ref "$head_ref" \
               --base-sha "$base_sha" \
-              --head-sha "${{ github.sha }}"
+              --head-sha "$head_sha"
           else
             body_file="/tmp/pr-body.md"
             jq -r '.pull_request.body' "$GITHUB_EVENT_PATH" > "$body_file"
 
-            python3 tools/pr_readiness_validator.py \
-              --repo-root . \
-              --pr-body-file "$body_file" \
+            bash scripts/pre-validate-pr.sh \
+              --body-file "$body_file" \
+              --validate-only \
+              --base "${{ github.event.pull_request.base.ref }}" \
               --head-ref "${{ github.head_ref }}" \
               --base-sha "${{ github.event.pull_request.base.sha }}" \
               --head-sha "${{ github.sha }}"
           fi
+
+      - name: Upload executor observability artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-readiness-observability-${{ github.run_id }}
+          path: |
+            .runtime/execution-report.json
+            .runtime/debug-trace.jsonl
+          if-no-files-found: warn
