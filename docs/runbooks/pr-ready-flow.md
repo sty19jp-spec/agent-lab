@@ -24,7 +24,7 @@ Completion condition:
 7. Push the branch to GitHub.
 8. Render the PR body to a local file.
 9. Run local pre-validation against that exact PR body file with the canonical Python validator.
-10. Generate `.runtime/execution-report.json` from that local pre-validation run.
+10. Generate `.runtime/execution-report.json` and `.runtime/debug-trace.jsonl` from that local pre-validation run.
 11. Open a Ready PR with `gh pr create --body-file <same file>`.
 12. Wait for validator checks before human merge.
 
@@ -63,6 +63,7 @@ Use these checks to confirm:
 - the final diff matches the stated task
 - the exact PR body artifact passes local pre-validation before submission
 - `.runtime/execution-report.json` is generated and remains untracked
+- `.runtime/debug-trace.jsonl` is generated and remains untracked
 
 ## PR Body Requirements
 Every operational PR should include non-empty content for:
@@ -91,7 +92,7 @@ Command names only are not sufficient for validator-facing PR metadata.
 
 For validator-facing PR creation, validate the exact PR body file that will be submitted.
 Do not validate one representation and submit a different one.
-Record the local result in `.runtime/execution-report.json`, but do not commit runtime artifacts.
+Record the local result in `.runtime/execution-report.json` and `.runtime/debug-trace.jsonl`, but do not commit runtime artifacts.
 
 ## Ready PR Checklist
 Mark the PR ready only when all of the following are true:
@@ -101,8 +102,9 @@ Mark the PR ready only when all of the following are true:
 3. the PR body is complete and factual
 4. the exact submitted PR body file passed local pre-validation
 5. `.runtime/execution-report.json` records that local pre-validation passed
-6. the PR is not a Draft
-7. the work is represented as `PR-ready`
+6. `.runtime/debug-trace.jsonl` makes the execution stages debuggable
+7. the PR is not a Draft
+8. the work is represented as `PR-ready`
 
 ## Common Failure Modes
 - PR body sections are present but empty
@@ -110,6 +112,7 @@ Mark the PR ready only when all of the following are true:
 - `Changed files` in the PR body does not match the actual diff
 - a locally reviewed PR body differs from the file submitted to GitHub
 - runtime artifacts are created but accidentally tracked
+- failure stage cannot be identified without reading raw console output
 - unrelated local files were committed by accident
 - the PR is opened as Draft even though validation is complete
 
@@ -120,6 +123,7 @@ Executor responsibility ends only when the branch is pushed, the PR is open, and
 
 ## Related Documents
 - `docs/RUNBOOK-ai-pr-workflow.md`
+- `docs/runbooks/executor-observability.md`
 - `docs/pr-readiness-validator.md`
 - `docs/governance/merge-only-model.md`
 - `docs/governance/ruleset-policy.md`
