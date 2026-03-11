@@ -55,6 +55,7 @@ main() {
   local target_branch
   local origin_head
   local start_commit
+  local pr_body_file
 
   require_task
 
@@ -77,12 +78,19 @@ main() {
 
   origin_head="$(git rev-parse --short origin/main)"
   start_commit="$(git rev-parse --short HEAD)"
+  pr_body_file="/tmp/$(basename "${REPO_ROOT}")-${target_branch//\//-}-pr-body.md"
+
+  export CODEX_PR_BODY_FILE="${pr_body_file}"
+  export CODEX_PR_BASE_BRANCH="main"
+  export CODEX_PR_PREVALIDATE_SCRIPT="${REPO_ROOT}/scripts/pre-validate-pr.sh"
 
   log "Started Codex task"
   log "  repository : $(basename "${REPO_ROOT}")"
   log "  branch     : ${target_branch}"
   log "  origin/main: ${origin_head}"
   log "  head       : ${start_commit}"
+  log "  pr body    : ${CODEX_PR_BODY_FILE}"
+  log "  pr flow    : render PR body -> pre-validate same file -> gh pr create --body-file"
   log
 
   exec codex --ask-for-approval never --sandbox workspace-write

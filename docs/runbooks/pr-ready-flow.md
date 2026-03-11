@@ -8,7 +8,7 @@ This runbook is intentionally minimal and aligned to the current validator and b
 ## Operating Model
 Delivery path:
 
-AI Executor -> feature branch -> scoped edits -> local review -> commit -> push -> Pull Request -> validator checks -> human merge
+AI Executor -> feature branch -> scoped edits -> local review -> commit -> push -> render PR body file -> pre-validate same PR body file -> Pull Request -> validator checks -> human merge
 
 Completion condition:
 
@@ -22,8 +22,10 @@ Completion condition:
 5. Commit with a clear, task-specific message.
 6. Fetch `origin` and rebase onto `origin/main`.
 7. Push the branch to GitHub.
-8. Open a Ready PR with complete metadata.
-9. Wait for validator checks before human merge.
+8. Render the PR body to a local file.
+9. Run local pre-validation against that exact PR body file.
+10. Open a Ready PR with `gh pr create --body-file <same file>`.
+11. Wait for validator checks before human merge.
 
 Conflict-prevention rule:
 
@@ -50,6 +52,7 @@ Before opening the PR:
 git status --short --branch
 git diff --stat
 git diff
+bash scripts/pre-validate-pr.sh --body-file /tmp/pr-body.md --validate-only
 ```
 
 Use these checks to confirm:
@@ -57,6 +60,7 @@ Use these checks to confirm:
 - branch name is correct
 - only intended files changed
 - the final diff matches the stated task
+- the exact PR body artifact passes local pre-validation before submission
 
 ## PR Body Requirements
 Every operational PR should include non-empty content for:
@@ -74,12 +78,17 @@ Required completion token:
 - `PR-ready`
 
 ## Evidence Expectations
-For standard documentation or governance tasks, the minimum evidence is usually:
+For standard documentation or governance tasks, prefer repository-visible evidence such as:
 
-- `git status`
-- `git diff`
+- changed file paths in the PR
+- generated artifacts committed or referenced by path
+- factual validation result statements tied to the changed files
 
 Evidence must be factual. Do not claim commands, tests, or artifacts that were not actually produced.
+Command names only are not sufficient for validator-facing PR metadata.
+
+For validator-facing PR creation, validate the exact PR body file that will be submitted.
+Do not validate one representation and submit a different one.
 
 ## Ready PR Checklist
 Mark the PR ready only when all of the following are true:
@@ -87,13 +96,15 @@ Mark the PR ready only when all of the following are true:
 1. the branch name is compliant
 2. the diff is scoped
 3. the PR body is complete and factual
-4. the PR is not a Draft
-5. the work is represented as `PR-ready`
+4. the exact submitted PR body file passed local pre-validation
+5. the PR is not a Draft
+6. the work is represented as `PR-ready`
 
 ## Common Failure Modes
 - PR body sections are present but empty
 - branch name does not match the validator pattern
 - `Changed files` in the PR body does not match the actual diff
+- a locally reviewed PR body differs from the file submitted to GitHub
 - unrelated local files were committed by accident
 - the PR is opened as Draft even though validation is complete
 
