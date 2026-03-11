@@ -9,3 +9,7 @@ logs:
 
 status:
 	gh run list
+
+.PHONY: codex-task
+codex-task:
+	@TASK="$(TASK)" bash scripts/codex-task.sh
