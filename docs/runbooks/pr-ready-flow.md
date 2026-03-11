@@ -23,9 +23,10 @@ Completion condition:
 6. Fetch `origin` and rebase onto `origin/main`.
 7. Push the branch to GitHub.
 8. Render the PR body to a local file.
-9. Run local pre-validation against that exact PR body file.
-10. Open a Ready PR with `gh pr create --body-file <same file>`.
-11. Wait for validator checks before human merge.
+9. Run local pre-validation against that exact PR body file with the canonical Python validator.
+10. Generate `.runtime/execution-report.json` from that local pre-validation run.
+11. Open a Ready PR with `gh pr create --body-file <same file>`.
+12. Wait for validator checks before human merge.
 
 Conflict-prevention rule:
 
@@ -61,6 +62,7 @@ Use these checks to confirm:
 - only intended files changed
 - the final diff matches the stated task
 - the exact PR body artifact passes local pre-validation before submission
+- `.runtime/execution-report.json` is generated and remains untracked
 
 ## PR Body Requirements
 Every operational PR should include non-empty content for:
@@ -89,6 +91,7 @@ Command names only are not sufficient for validator-facing PR metadata.
 
 For validator-facing PR creation, validate the exact PR body file that will be submitted.
 Do not validate one representation and submit a different one.
+Record the local result in `.runtime/execution-report.json`, but do not commit runtime artifacts.
 
 ## Ready PR Checklist
 Mark the PR ready only when all of the following are true:
@@ -97,14 +100,16 @@ Mark the PR ready only when all of the following are true:
 2. the diff is scoped
 3. the PR body is complete and factual
 4. the exact submitted PR body file passed local pre-validation
-5. the PR is not a Draft
-6. the work is represented as `PR-ready`
+5. `.runtime/execution-report.json` records that local pre-validation passed
+6. the PR is not a Draft
+7. the work is represented as `PR-ready`
 
 ## Common Failure Modes
 - PR body sections are present but empty
 - branch name does not match the validator pattern
 - `Changed files` in the PR body does not match the actual diff
 - a locally reviewed PR body differs from the file submitted to GitHub
+- runtime artifacts are created but accidentally tracked
 - unrelated local files were committed by accident
 - the PR is opened as Draft even though validation is complete
 
