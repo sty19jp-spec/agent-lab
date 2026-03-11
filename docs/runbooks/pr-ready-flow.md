@@ -20,9 +20,15 @@ Completion condition:
 3. Keep the change set limited to the assigned scope.
 4. Review with `git status` and `git diff`.
 5. Commit with a clear, task-specific message.
-6. Push the branch to GitHub.
-7. Open a Ready PR with complete metadata.
-8. Wait for validator checks before human merge.
+6. Fetch `origin` and rebase onto `origin/main`.
+7. Push the branch to GitHub.
+8. Open a Ready PR with complete metadata.
+9. Wait for validator checks before human merge.
+
+Conflict-prevention rule:
+
+- immediately before PR creation, rebase the task branch onto `origin/main`
+- if the rebase surfaces conflicts, resolve them before pushing or opening the PR
 
 ## Scope Discipline
 Allowed:
