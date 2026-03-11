@@ -1,195 +1,23 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 log() { printf '%s\n' "$*"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-RUNTIME_DIR="${REPO_ROOT}/.runtime"
-TRACE_FILE="${RUNTIME_DIR}/debug-trace.jsonl"
-REPORT_FILE="${RUNTIME_DIR}/execution-report.json"
-CURRENT_STAGE="bootstrap"
-REPORT_FINALIZED=0
-RUN_ID=""
-EXECUTOR_NAME="${CODEX_EXECUTOR_NAME:-codex-cli}"
-EXECUTOR_VERSION="${CODEX_EXECUTOR_VERSION:-unknown}"
-VALIDATOR_VERSION="unknown"
-STARTED_AT=""
-STARTED_MS=""
-FAILURE_STAGE="none"
-ERROR_SUMMARY=""
-CURRENT_BRANCH=""
-BASE_COMMIT=""
-HEAD_COMMIT=""
 
-resolve_python() {
-  if command -v python >/dev/null 2>&1; then
-    printf 'python'
-    return
-  fi
-  if command -v python3 >/dev/null 2>&1; then
-    printf 'python3'
-    return
-  fi
-  printf ''
+# shellcheck source=/dev/null
+. "${SCRIPT_DIR}/lib/executor-runtime.sh"
+# shellcheck source=/dev/null
+. "${SCRIPT_DIR}/lib/executor-stage.sh"
+# shellcheck source=/dev/null
+. "${SCRIPT_DIR}/lib/executor-failure.sh"
+
+executor_runtime_prepare_paths "${REPO_ROOT}"
+
+require_task() {
+  [[ -n "${TASK:-}" ]] || executor_die_config "TASK is required. Usage: make codex-task TASK=<task-name>"
 }
-
-PYTHON_BIN="$(resolve_python)"
-
-now_iso() {
-  date -u +'%Y-%m-%dT%H:%M:%SZ'
-}
-
-now_ms() {
-  if [[ -n "${PYTHON_BIN}" ]]; then
-    "${PYTHON_BIN}" - <<'PY'
-import time
-print(int(time.time() * 1000))
-PY
-    return
-  fi
-  date -u +%s000
-}
-
-append_trace() {
-  local stage="$1"
-  local status="$2"
-  local message="$3"
-  local artifact="${4:-}"
-
-  [[ -n "${PYTHON_BIN}" ]] || return
-
-  mkdir -p "${RUNTIME_DIR}"
-  "${PYTHON_BIN}" - <<'PYEOF' "${TRACE_FILE}" "${stage}" "${status}" "${message}" "${artifact}"
-import json
-import sys
-from datetime import datetime, timezone
-
-trace_file, stage, status, message, artifact = sys.argv[1:]
-event = {
-    "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "stage": stage,
-    "status": status,
-    "message": message,
-}
-if artifact:
-    event["artifact"] = artifact
-
-with open(trace_file, "a", encoding="utf-8") as fh:
-    fh.write(json.dumps(event, ensure_ascii=True) + "\n")
-PYEOF
-}
-
-write_report() {
-  local finished_at="$1"
-  local finished_ms="$2"
-
-  [[ -n "${PYTHON_BIN}" ]] || return
-
-  "${PYTHON_BIN}" - <<'PYEOF' "${REPORT_FILE}" "${STARTED_AT}" "${STARTED_MS}" "${finished_at}" "${finished_ms}" "${RUN_ID}" "${EXECUTOR_NAME}" "${EXECUTOR_VERSION}" "${CURRENT_BRANCH}" "${BASE_COMMIT}" "${HEAD_COMMIT}" "${VALIDATOR_VERSION}" "${FAILURE_STAGE}" "${ERROR_SUMMARY}" "${TRACE_FILE}"
-import json
-import sys
-
-(
-    report_file,
-    started_at,
-    started_ms,
-    finished_at,
-    finished_ms,
-    run_id,
-    executor_name,
-    executor_version,
-    branch,
-    base_commit,
-    head_commit,
-    validator_version,
-    failure_stage,
-    error_summary,
-    trace_file,
-) = sys.argv[1:]
-
-started_ms_int = int(started_ms) if started_ms else 0
-finished_ms_int = int(finished_ms) if finished_ms else started_ms_int
-duration_ms = finished_ms_int - started_ms_int if finished_ms_int >= started_ms_int else 0
-
-report = {
-    "schema_version": "phase46-v1",
-    "run_id": run_id,
-    "executor": {
-        "name": executor_name,
-        "version": executor_version,
-    },
-    "repository": {
-        "branch": branch,
-        "base_commit": base_commit,
-        "head_commit": head_commit,
-        "workspace_clean": True,
-        "changed_files_count": 0,
-        "changed_files": [],
-        "untracked_files_count": 0,
-        "untracked_files": [],
-    },
-    "pr": {
-        "body_file": "",
-        "title": "",
-        "readiness_token": "PR-ready",
-    },
-    "validation": {
-        "validator_version": validator_version,
-        "pre_validation_result": "pending",
-        "validator_command": "",
-    },
-    "timing": {
-        "started_at": started_at,
-        "finished_at": finished_at,
-        "duration_ms": duration_ms,
-    },
-    "artifacts": {
-        "execution_report": ".runtime/execution-report.json",
-        "debug_trace": ".runtime/debug-trace.jsonl",
-    },
-    "debug": {
-        "trace_enabled": True,
-        "failure_stage": failure_stage,
-        "error_summary": error_summary,
-    },
-}
-
-with open(report_file, "w", encoding="utf-8") as fh:
-    json.dump(report, fh, indent=2)
-    fh.write("\n")
-PYEOF
-}
-
-finalize_failure() {
-  local message="$1"
-
-  trap - ERR
-  if [[ "${REPORT_FINALIZED}" -eq 1 ]]; then
-    printf 'ERROR: %s\n' "${message}" >&2
-    exit 1
-  fi
-
-  FAILURE_STAGE="${CURRENT_STAGE}"
-  ERROR_SUMMARY="${message}"
-  append_trace "${CURRENT_STAGE}" "error" "${message}"
-  write_report "$(now_iso)" "$(now_ms)"
-  REPORT_FINALIZED=1
-  printf 'ERROR: %s\n' "${message}" >&2
-  exit 1
-}
-
-die() {
-  finalize_failure "$*"
-}
-
-on_err() {
-  local exit_code=$?
-  finalize_failure "command failed during ${CURRENT_STAGE}: ${BASH_COMMAND}"
-  exit "${exit_code}"
-}
-
-trap on_err ERR
 
 load_nvm() {
   local nvm_dir="${NVM_DIR:-${HOME}/.nvm}"
@@ -202,54 +30,40 @@ load_nvm() {
 }
 
 require_codex() {
-  command -v codex >/dev/null 2>&1 || die "codex command not found. Install Codex CLI or load it into PATH."
-}
-
-require_task() {
-  [[ -n "${TASK:-}" ]] || die "TASK is required. Usage: make codex-task TASK=<task-name>"
+  command -v codex >/dev/null 2>&1 || executor_die_config "codex command not found. Install Codex CLI or load it into PATH."
 }
 
 ensure_main_branch() {
   local current_branch
   current_branch="$(git branch --show-current)"
-  [[ "${current_branch}" == "main" ]] || die "current branch must be main before starting a Codex task (current: ${current_branch:-detached HEAD})"
+  [[ "${current_branch}" == "main" ]] || executor_die_repo_state "current branch must be main before starting a Codex task (current: ${current_branch:-detached HEAD})"
 }
 
 ensure_clean_worktree() {
-  git diff --quiet --ignore-submodules -- || die "working tree has unstaged changes"
-  git diff --cached --quiet --ignore-submodules -- || die "working tree has staged changes"
-  [[ -z "$(git ls-files --others --exclude-standard)" ]] || die "untracked files exist"
+  git diff --quiet --ignore-submodules -- || executor_die_repo_state "working tree has unstaged changes"
+  git diff --cached --quiet --ignore-submodules -- || executor_die_repo_state "working tree has staged changes"
+  [[ -z "$(git ls-files --others --exclude-standard)" ]] || executor_die_repo_state "untracked files exist"
 }
 
 ensure_branch_available() {
   local target_branch="$1"
 
-  git check-ref-format --branch "${target_branch}" >/dev/null 2>&1 || die "invalid task branch name: ${target_branch}"
+  git check-ref-format --branch "${target_branch}" >/dev/null 2>&1 || executor_die_config "invalid task branch name: ${target_branch}"
 
   if git show-ref --verify --quiet "refs/heads/${target_branch}"; then
-    die "target branch already exists locally: ${target_branch}"
+    executor_die_repo_state "target branch already exists locally: ${target_branch}"
   fi
 
   if git show-ref --verify --quiet "refs/remotes/origin/${target_branch}"; then
-    die "target branch already exists on origin: ${target_branch}"
+    executor_die_repo_state "target branch already exists on origin: ${target_branch}"
   fi
 }
 
-init_observability() {
-  mkdir -p "${RUNTIME_DIR}"
-  git check-ignore -q "${REPORT_FILE}" || die "runtime report must be ignored by git: ${REPORT_FILE}"
-  git check-ignore -q "${TRACE_FILE}" || die "debug trace must be ignored by git: ${TRACE_FILE}"
-
-  STARTED_AT="$(now_iso)"
-  STARTED_MS="$(now_ms)"
-  RUN_ID="$(date -u +'%Y%m%dT%H%M%SZ')-$$"
-  CURRENT_BRANCH="$(git branch --show-current)"
-  VALIDATOR_VERSION="$(git rev-parse HEAD:tools/pr_readiness_validator.py)"
-
-  : > "${TRACE_FILE}"
-  write_report "${STARTED_AT}" "${STARTED_MS}"
-  append_trace "bootstrap" "ok" "initialized executor observability" ".runtime/execution-report.json"
+on_err() {
+  executor_die_unknown "command failed during ${EXECUTOR_CURRENT_STAGE}: ${BASH_COMMAND}"
 }
+
+trap on_err ERR
 
 main() {
   local target_branch
@@ -257,50 +71,66 @@ main() {
   local start_commit
   local pr_body_file
 
-  require_task
-
   cd "${REPO_ROOT}"
-  init_observability
+  executor_runtime_init_state
+  EXECUTOR_TASK_DESCRIPTION="${TASK:-}"
+  git check-ignore -q "${EXECUTOR_REPORT_FILE}" || executor_die_config "runtime report must be ignored by git: ${EXECUTOR_REPORT_FILE}"
+  git check-ignore -q "${EXECUTOR_TRACE_FILE}" || executor_die_config "debug trace must be ignored by git: ${EXECUTOR_TRACE_FILE}"
+  : > "${EXECUTOR_TRACE_FILE}"
 
+  executor_stage_begin "bootstrap" "starting executor runtime bootstrap"
+  require_task
   load_nvm
   require_codex
+  EXECUTOR_NAME="${CODEX_EXECUTOR_NAME:-codex-cli}"
   EXECUTOR_VERSION="$(codex --version 2>/dev/null | head -n1 || printf 'unknown')"
-
+  EXECUTOR_VALIDATOR_VERSION="$(git rev-parse HEAD:tools/pr_readiness_validator.py)"
   target_branch="codex/${TASK}"
-
   ensure_main_branch
   ensure_clean_worktree
   ensure_branch_available "${target_branch}"
+  executor_runtime_refresh_repo_state
+  executor_stage_succeed "bootstrap" "validated executor bootstrap prerequisites"
+  executor_runtime_write_report
 
-  CURRENT_STAGE="main_sync"
-  git fetch origin
+  executor_stage_begin "main_sync" "synchronizing local main with origin/main"
+  if ! executor_stage_run_with_retry "main_sync" 2 "retrying git fetch origin" git fetch origin; then
+    executor_die_transient "git fetch origin failed after retries"
+  fi
   git switch main
   git reset --hard origin/main
-  append_trace "main_sync" "ok" "synchronized local main to origin/main" "origin/main"
+  EXECUTOR_REPOSITORY_BASE_COMMIT="$(git rev-parse origin/main)"
+  EXECUTOR_REPOSITORY_HEAD_COMMIT="$(git rev-parse HEAD)"
+  executor_runtime_refresh_repo_state "${EXECUTOR_REPOSITORY_BASE_COMMIT}" "${EXECUTOR_REPOSITORY_HEAD_COMMIT}"
+  executor_stage_succeed "main_sync" "synchronized local main to origin/main" "origin/main"
+  executor_runtime_write_report
 
-  CURRENT_STAGE="branch_create"
+  executor_stage_begin "branch_create" "creating task branch"
   git switch -c "${target_branch}"
-  append_trace "branch_create" "ok" "created task branch" "${target_branch}"
+  EXECUTOR_REPOSITORY_BRANCH="${target_branch}"
+  EXECUTOR_REPOSITORY_HEAD_COMMIT="$(git rev-parse HEAD)"
+  EXECUTOR_REPOSITORY_BASE_COMMIT="$(git rev-parse origin/main)"
+  executor_runtime_refresh_repo_state "${EXECUTOR_REPOSITORY_BASE_COMMIT}" "${EXECUTOR_REPOSITORY_HEAD_COMMIT}"
+  executor_stage_succeed "branch_create" "created task branch" "${target_branch}"
+  executor_runtime_write_report
 
+  executor_stage_begin "executor_runtime" "preparing executor runtime contract"
   origin_head="$(git rev-parse --short origin/main)"
-  BASE_COMMIT="$(git rev-parse origin/main)"
-  HEAD_COMMIT="$(git rev-parse HEAD)"
   start_commit="$(git rev-parse --short HEAD)"
   pr_body_file="/tmp/$(basename "${REPO_ROOT}")-${target_branch//\//-}-pr-body.md"
-  CURRENT_BRANCH="${target_branch}"
 
-  export CODEX_PR_BODY_FILE="${pr_body_file}"
+  EXECUTOR_PR_BODY_FILE="${pr_body_file}"
+  export CODEX_PR_BODY_FILE="${EXECUTOR_PR_BODY_FILE}"
   export CODEX_PR_BASE_BRANCH="main"
   export CODEX_PR_PREVALIDATE_SCRIPT="${REPO_ROOT}/scripts/pre-validate-pr.sh"
-  export CODEX_EXECUTION_REPORT_FILE="${REPO_ROOT}/.runtime/execution-report.json"
-  export CODEX_DEBUG_TRACE_FILE="${REPO_ROOT}/.runtime/debug-trace.jsonl"
-  export CODEX_RUN_ID="${RUN_ID}"
+  export CODEX_EXECUTION_REPORT_FILE="${EXECUTOR_REPORT_FILE}"
+  export CODEX_DEBUG_TRACE_FILE="${EXECUTOR_TRACE_FILE}"
+  export CODEX_RUN_ID="${EXECUTOR_RUN_ID}"
   export CODEX_EXECUTOR_NAME="${EXECUTOR_NAME}"
   export CODEX_EXECUTOR_VERSION="${EXECUTOR_VERSION}"
 
-  CURRENT_STAGE="executor_runtime"
-  write_report "$(now_iso)" "$(now_ms)"
-  append_trace "executor_runtime" "ok" "executor runtime ready" "${CODEX_PR_BODY_FILE}"
+  executor_stage_succeed "executor_runtime" "prepared executor runtime contract" "${EXECUTOR_PR_BODY_FILE}"
+  executor_runtime_write_report
 
   log "Started Codex task"
   log "  repository : $(basename "${REPO_ROOT}")"
