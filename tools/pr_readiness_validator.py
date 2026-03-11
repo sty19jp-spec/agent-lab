@@ -91,13 +91,17 @@ class PRReadinessValidator:
             norm = candidate.strip().strip("`").rstrip(".,:;")
             while norm.startswith("./"):
                 norm = norm[2:]
-            if not norm or "/" not in norm or norm in cleaned:
+            if not norm or norm in cleaned:
                 return
 
             if norm.startswith("codex/"):
                 return
 
-            if not any(norm.startswith(prefix) for prefix in ALLOWED_PATH_PREFIXES):
+            if "/" not in norm:
+                root_path = (self.repo_root / norm).resolve()
+                if not root_path.is_file():
+                    return
+            elif not any(norm.startswith(prefix) for prefix in ALLOWED_PATH_PREFIXES):
                 return
 
             cleaned.append(norm)
