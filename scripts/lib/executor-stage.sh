@@ -8,6 +8,13 @@ EXECUTOR_STAGE_LIB_LOADED=1
 executor_stage_begin() {
   local stage="$1"
   local message="${2:-}"
+  local stage_kind
+
+  stage_kind="$(executor_runtime_stage_kind_for "${stage}")"
+
+  if [[ "${EXECUTOR_STAGE_STATUS[${stage}]:-pending}" == "ok" ]]; then
+    executor_runtime_trace_event "${stage}" "started" "re-entering completed ${stage_kind} stage"
+  fi
 
   EXECUTOR_CURRENT_STAGE="${stage}"
   EXECUTOR_CURRENT_STAGE_STATUS="in_progress"

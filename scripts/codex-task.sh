@@ -12,6 +12,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 . "${SCRIPT_DIR}/lib/executor-stage.sh"
 # shellcheck source=/dev/null
 . "${SCRIPT_DIR}/lib/executor-failure.sh"
+# shellcheck source=/dev/null
+. "${SCRIPT_DIR}/lib/executor-health.sh"
 
 executor_runtime_prepare_paths "${REPO_ROOT}"
 
@@ -65,6 +67,7 @@ ensure_runtime_artifacts_ignored() {
   git check-ignore -q "${EXECUTOR_STATE_FILE}" || executor_die_config "execution state must be ignored by git: ${EXECUTOR_STATE_FILE}"
   git check-ignore -q "${EXECUTOR_FAILURE_FILE}" || executor_die_config "failure report must be ignored by git: ${EXECUTOR_FAILURE_FILE}"
   git check-ignore -q "${EXECUTOR_LOCK_FILE}" || executor_die_config "run lock must be ignored by git: ${EXECUTOR_LOCK_FILE}"
+  git check-ignore -q "${EXECUTOR_METRICS_FILE}" || executor_die_config "reliability metrics must be ignored by git: ${EXECUTOR_METRICS_FILE}"
 }
 
 resume_requested() {
@@ -166,7 +169,7 @@ main() {
 
   executor_stage_begin "bootstrap" "starting executor runtime bootstrap"
   load_nvm
-  require_codex
+  executor_health_run_preflight "${target_branch}" codex
   EXECUTOR_NAME="${CODEX_EXECUTOR_NAME:-codex-cli}"
   EXECUTOR_VERSION="$(codex --version 2>/dev/null | head -n1 || printf 'unknown')"
   EXECUTOR_VALIDATOR_VERSION="$(git rev-parse HEAD:tools/pr_readiness_validator.py)"
