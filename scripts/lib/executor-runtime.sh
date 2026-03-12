@@ -21,14 +21,21 @@ declare -gA EXECUTOR_STAGE_STARTED_AT=()
 declare -gA EXECUTOR_STAGE_ENDED_AT=()
 declare -gA EXECUTOR_STAGE_RETRY_COUNT=()
 declare -gA EXECUTOR_STAGE_FAIL_CLASSIFICATION=()
+declare -ga EXECUTOR_REPAIR_TYPES=()
+declare -gA EXECUTOR_REPAIR_ATTEMPTS=()
+declare -gA EXECUTOR_REPAIR_SUCCESSES=()
+declare -gA EXECUTOR_REPAIR_FAILURES=()
 
-declare -g EXECUTOR_SCHEMA_VERSION="phase48-v1"
+declare -g EXECUTOR_SCHEMA_VERSION="phase49-v1"
+declare -g EXECUTOR_STATE_SCHEMA_VERSION="phase49-state-v1"
+declare -g EXECUTOR_METRICS_SCHEMA_VERSION="phase49-metrics-v1"
 declare -g EXECUTOR_RUNTIME_DIR=""
 declare -g EXECUTOR_TRACE_FILE=""
 declare -g EXECUTOR_REPORT_FILE=""
 declare -g EXECUTOR_STATE_FILE=""
 declare -g EXECUTOR_FAILURE_FILE=""
 declare -g EXECUTOR_LOCK_FILE=""
+declare -g EXECUTOR_METRICS_FILE=""
 declare -g EXECUTOR_PYTHON_BIN=""
 declare -g EXECUTOR_RUN_ID=""
 declare -g EXECUTOR_NAME="codex-cli"
@@ -68,6 +75,8 @@ declare -g EXECUTOR_STATE_FAILURE_CLASS="none"
 declare -g EXECUTOR_STATE_LAST_UPDATED_AT=""
 declare -g EXECUTOR_LOCK_ACQUIRED="0"
 declare -g EXECUTOR_RECONCILED_PR_URL=""
+declare -g EXECUTOR_HEALTH_STATUS="pending"
+declare -g EXECUTOR_HEALTH_SUMMARY=""
 
 executor_runtime_resolve_python() {
   if command -v python >/dev/null 2>&1; then
@@ -106,6 +115,7 @@ executor_runtime_prepare_paths() {
   EXECUTOR_STATE_FILE="${EXECUTOR_RUNTIME_DIR}/execution-state.json"
   EXECUTOR_FAILURE_FILE="${EXECUTOR_RUNTIME_DIR}/failure-report.json"
   EXECUTOR_LOCK_FILE="${EXECUTOR_RUNTIME_DIR}/run.lock"
+  EXECUTOR_METRICS_FILE="${EXECUTOR_RUNTIME_DIR}/reliability-metrics.json"
   EXECUTOR_PYTHON_BIN="${EXECUTOR_PYTHON_BIN:-$(executor_runtime_resolve_python)}"
 }
 
@@ -120,10 +130,18 @@ executor_runtime_reset_stages() {
   done
 }
 
+executor_runtime_reset_repairs() {
+  EXECUTOR_REPAIR_TYPES=()
+  EXECUTOR_REPAIR_ATTEMPTS=()
+  EXECUTOR_REPAIR_SUCCESSES=()
+  EXECUTOR_REPAIR_FAILURES=()
+}
+
 executor_runtime_init_state() {
   mkdir -p "${EXECUTOR_RUNTIME_DIR}"
 
   executor_runtime_reset_stages
+  executor_runtime_reset_repairs
 
   EXECUTOR_STARTED_AT="$(executor_runtime_now_iso)"
   EXECUTOR_STARTED_MS="$(executor_runtime_now_ms)"
@@ -148,6 +166,25 @@ executor_runtime_init_state() {
   EXECUTOR_STATE_FAILURE_CLASS="none"
   EXECUTOR_STATE_LAST_UPDATED_AT=""
   EXECUTOR_RECONCILED_PR_URL=""
+  EXECUTOR_HEALTH_STATUS="pending"
+  EXECUTOR_HEALTH_SUMMARY=""
+}
+
+executor_runtime_stage_kind_for() {
+  case "$1" in
+    bootstrap|pre_validation)
+      printf 'pure_read'
+      ;;
+    main_sync|branch_create|executor_runtime|pr_body_render|post_create)
+      printf 'convergent_write'
+      ;;
+    pr_create)
+      printf 'guarded_side_effect'
+      ;;
+    *)
+      printf 'pure_read'
+      ;;
+  esac
 }
 
 executor_runtime_trace_event() {
@@ -210,8 +247,9 @@ executor_runtime_refresh_repo_state() {
 executor_runtime_stage_payload() {
   local stage
   for stage in "${EXECUTOR_STAGE_ORDER[@]}"; do
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "${stage}" \
+      "$(executor_runtime_stage_kind_for "${stage}")" \
       "${EXECUTOR_STAGE_STATUS[${stage}]}" \
       "${EXECUTOR_STAGE_STARTED_AT[${stage}]}" \
       "${EXECUTOR_STAGE_ENDED_AT[${stage}]}" \
@@ -236,6 +274,44 @@ executor_runtime_retry_count_payload() {
   done
 }
 
+executor_runtime_repair_payload() {
+  local repair_type
+  for repair_type in "${EXECUTOR_REPAIR_TYPES[@]}"; do
+    printf '%s\t%s\t%s\n' \
+      "${repair_type}" \
+      "${EXECUTOR_REPAIR_ATTEMPTS[${repair_type}]:-0}" \
+      "${EXECUTOR_REPAIR_SUCCESSES[${repair_type}]:-0}"
+  done
+}
+
+executor_runtime_note_repair_attempt() {
+  local repair_type="$1"
+  local result="$2"
+  local message="${3:-}"
+  local known="0"
+  local item
+
+  for item in "${EXECUTOR_REPAIR_TYPES[@]}"; do
+    if [[ "${item}" == "${repair_type}" ]]; then
+      known="1"
+      break
+    fi
+  done
+
+  if [[ "${known}" == "0" ]]; then
+    EXECUTOR_REPAIR_TYPES+=("${repair_type}")
+  fi
+
+  EXECUTOR_REPAIR_ATTEMPTS["${repair_type}"]="$(( ${EXECUTOR_REPAIR_ATTEMPTS[${repair_type}]:-0} + 1 ))"
+  if [[ "${result}" == "success" ]]; then
+    EXECUTOR_REPAIR_SUCCESSES["${repair_type}"]="$(( ${EXECUTOR_REPAIR_SUCCESSES[${repair_type}]:-0} + 1 ))"
+  else
+    EXECUTOR_REPAIR_FAILURES["${repair_type}"]="$(( ${EXECUTOR_REPAIR_FAILURES[${repair_type}]:-0} + 1 ))"
+  fi
+
+  executor_runtime_trace_event "${EXECUTOR_CURRENT_STAGE}" "repair" "${message:-${repair_type} ${result}}" "${repair_type}"
+}
+
 executor_runtime_write_state() {
   [[ -n "${EXECUTOR_PYTHON_BIN}" ]] || return
 
@@ -251,12 +327,13 @@ executor_runtime_write_state() {
   EXECUTOR_STATE_FAILURE_CLASS="${EXECUTOR_FAILURE_CLASSIFICATION}"
   EXECUTOR_STATE_LAST_UPDATED_AT="${last_updated_at}"
 
-  "${EXECUTOR_PYTHON_BIN}" - <<'PYEOF' "${EXECUTOR_STATE_FILE}" "${EXECUTOR_RUN_ID}" "${EXECUTOR_CURRENT_STAGE}" "${completed_payload}" "${EXECUTOR_FAILURE_STAGE}" "${EXECUTOR_FAILURE_CLASSIFICATION}" "${retry_payload}" "${EXECUTOR_REPOSITORY_BRANCH}" "${EXECUTOR_REPOSITORY_HEAD_COMMIT}" "${EXECUTOR_PR_BODY_FILE}" "${last_updated_at}"
+  "${EXECUTOR_PYTHON_BIN}" - <<'PYEOF' "${EXECUTOR_STATE_FILE}" "${EXECUTOR_STATE_SCHEMA_VERSION}" "${EXECUTOR_RUN_ID}" "${EXECUTOR_CURRENT_STAGE}" "${completed_payload}" "${EXECUTOR_FAILURE_STAGE}" "${EXECUTOR_FAILURE_CLASSIFICATION}" "${retry_payload}" "${EXECUTOR_REPOSITORY_BRANCH}" "${EXECUTOR_REPOSITORY_HEAD_COMMIT}" "${EXECUTOR_PR_BODY_FILE}" "${last_updated_at}"
 import json
 import sys
 
 (
     state_file,
+    schema_version,
     run_id,
     current_stage,
     completed_payload,
@@ -278,6 +355,7 @@ for line in retry_payload.splitlines():
     retry_count_by_stage[name] = int(count or "0")
 
 state = {
+    "schema_version": schema_version,
     "run_id": run_id,
     "current_stage": current_stage,
     "completed_stages": completed,
@@ -302,18 +380,21 @@ executor_runtime_write_report() {
   local finished_at="${1:-$(executor_runtime_now_iso)}"
   local finished_ms="${2:-$(executor_runtime_now_ms)}"
   local stage_payload
+  local repair_payload
 
   stage_payload="$(executor_runtime_stage_payload)"
+  repair_payload="$(executor_runtime_repair_payload)"
   EXECUTOR_FINISHED_AT="${finished_at}"
   EXECUTOR_FINISHED_MS="${finished_ms}"
 
-  "${EXECUTOR_PYTHON_BIN}" - <<'PYEOF' "${EXECUTOR_REPORT_FILE}" "${EXECUTOR_SCHEMA_VERSION}" "${EXECUTOR_RUN_ID}" "${EXECUTOR_NAME}" "${EXECUTOR_VERSION}" "${EXECUTOR_REPOSITORY_BRANCH}" "${EXECUTOR_REPOSITORY_BASE_COMMIT}" "${EXECUTOR_REPOSITORY_HEAD_COMMIT}" "${EXECUTOR_REPOSITORY_WORKSPACE_CLEAN}" "${EXECUTOR_REPOSITORY_CHANGED_FILES_NL}" "${EXECUTOR_REPOSITORY_UNTRACKED_FILES_NL}" "${EXECUTOR_PR_BODY_FILE}" "${EXECUTOR_PR_TITLE}" "${EXECUTOR_PR_URL}" "${EXECUTOR_PR_READINESS_TOKEN}" "${EXECUTOR_VALIDATOR_VERSION}" "${EXECUTOR_VALIDATION_RESULT}" "${EXECUTOR_VALIDATOR_COMMAND}" "${EXECUTOR_STARTED_AT}" "${EXECUTOR_STARTED_MS}" "${EXECUTOR_FINISHED_AT}" "${EXECUTOR_FINISHED_MS}" "${EXECUTOR_TRACE_FILE}" "${EXECUTOR_CURRENT_STAGE}" "${EXECUTOR_CURRENT_STAGE_STATUS}" "${EXECUTOR_RUN_STATUS}" "${EXECUTOR_TASK_DESCRIPTION}" "${EXECUTOR_FAILURE_STAGE}" "${EXECUTOR_FAILURE_CLASSIFICATION}" "${EXECUTOR_ERROR_SUMMARY}" "${stage_payload}" "${EXECUTOR_STATE_FILE}" "${EXECUTOR_FAILURE_FILE}" "${EXECUTOR_LOCK_FILE}"
+  "${EXECUTOR_PYTHON_BIN}" - <<'PYEOF' "${EXECUTOR_REPORT_FILE}" "${EXECUTOR_SCHEMA_VERSION}" "${EXECUTOR_STATE_SCHEMA_VERSION}" "${EXECUTOR_RUN_ID}" "${EXECUTOR_NAME}" "${EXECUTOR_VERSION}" "${EXECUTOR_REPOSITORY_BRANCH}" "${EXECUTOR_REPOSITORY_BASE_COMMIT}" "${EXECUTOR_REPOSITORY_HEAD_COMMIT}" "${EXECUTOR_REPOSITORY_WORKSPACE_CLEAN}" "${EXECUTOR_REPOSITORY_CHANGED_FILES_NL}" "${EXECUTOR_REPOSITORY_UNTRACKED_FILES_NL}" "${EXECUTOR_PR_BODY_FILE}" "${EXECUTOR_PR_TITLE}" "${EXECUTOR_PR_URL}" "${EXECUTOR_PR_READINESS_TOKEN}" "${EXECUTOR_VALIDATOR_VERSION}" "${EXECUTOR_VALIDATION_RESULT}" "${EXECUTOR_VALIDATOR_COMMAND}" "${EXECUTOR_STARTED_AT}" "${EXECUTOR_STARTED_MS}" "${EXECUTOR_FINISHED_AT}" "${EXECUTOR_FINISHED_MS}" "${EXECUTOR_TRACE_FILE}" "${EXECUTOR_CURRENT_STAGE}" "${EXECUTOR_CURRENT_STAGE_STATUS}" "${EXECUTOR_RUN_STATUS}" "${EXECUTOR_TASK_DESCRIPTION}" "${EXECUTOR_FAILURE_STAGE}" "${EXECUTOR_FAILURE_CLASSIFICATION}" "${EXECUTOR_ERROR_SUMMARY}" "${stage_payload}" "${EXECUTOR_STATE_FILE}" "${EXECUTOR_FAILURE_FILE}" "${EXECUTOR_LOCK_FILE}" "${EXECUTOR_METRICS_FILE}" "${EXECUTOR_HEALTH_STATUS}" "${EXECUTOR_HEALTH_SUMMARY}" "${repair_payload}"
 import json
 import sys
 
 (
     report_file,
     schema_version,
+    state_schema_version,
     run_id,
     executor_name,
     executor_version,
@@ -346,6 +427,10 @@ import sys
     state_file,
     failure_file,
     lock_file,
+    metrics_file,
+    health_status,
+    health_summary,
+    repair_payload,
 ) = sys.argv[1:]
 
 changed_files = [line for line in changed_files_nl.splitlines() if line]
@@ -358,10 +443,11 @@ stages = []
 for line in stage_payload.splitlines():
     if not line:
         continue
-    name, status, started, ended, retry_count, fail_class = line.split("\t")
+    name, kind, status, started, ended, retry_count, fail_class = line.split("\t")
     stages.append(
         {
             "name": name,
+            "kind": kind,
             "stage_status": status,
             "started_at": started,
             "ended_at": ended,
@@ -369,6 +455,19 @@ for line in stage_payload.splitlines():
             "fail_classification": fail_class or "none",
         }
     )
+
+repairs = {}
+for line in repair_payload.splitlines():
+    if not line:
+        continue
+    name, attempts, successes = line.split("\t")
+    attempts_int = int(attempts or "0")
+    successes_int = int(successes or "0")
+    repairs[name] = {
+        "attempts": attempts_int,
+        "successes": successes_int,
+        "failures": max(attempts_int - successes_int, 0),
+    }
 
 report = {
     "schema_version": schema_version,
@@ -411,6 +510,7 @@ report = {
         "execution_state": ".runtime/execution-state.json",
         "failure_report": ".runtime/failure-report.json",
         "run_lock": ".runtime/run.lock",
+        "reliability_metrics": ".runtime/reliability-metrics.json",
     },
     "runtime": {
         "current_stage": current_stage,
@@ -429,6 +529,12 @@ report = {
             "debug_trace": ".runtime/debug-trace.jsonl",
             "pr_url": pr_url,
         },
+    },
+    "reliability": {
+        "state_schema_version": state_schema_version,
+        "health_status": health_status,
+        "health_summary": health_summary,
+        "repairs": repairs,
     },
     "stages": stages,
     "debug": {
@@ -464,7 +570,7 @@ stage_map = {stage["name"]: stage for stage in data.get("stages", [])}
 def emit(name, value):
     print(f"{name}={shlex.quote(str(value))}")
 
-emit("EXECUTOR_SCHEMA_VERSION", data.get("schema_version", "phase48-v1"))
+emit("EXECUTOR_SCHEMA_VERSION", data.get("schema_version", "phase49-v1"))
 emit("EXECUTOR_RUN_ID", data.get("run_id", ""))
 emit("EXECUTOR_NAME", data.get("executor", {}).get("name", ""))
 emit("EXECUTOR_VERSION", data.get("executor", {}).get("version", ""))
@@ -492,6 +598,8 @@ emit("EXECUTOR_TASK_DESCRIPTION", data.get("contract", {}).get("input", {}).get(
 emit("EXECUTOR_FAILURE_STAGE", data.get("debug", {}).get("failure_stage", "none"))
 emit("EXECUTOR_FAILURE_CLASSIFICATION", data.get("debug", {}).get("fail_classification", "none"))
 emit("EXECUTOR_ERROR_SUMMARY", data.get("debug", {}).get("error_summary", ""))
+emit("EXECUTOR_HEALTH_STATUS", data.get("reliability", {}).get("health_status", "pending"))
+emit("EXECUTOR_HEALTH_SUMMARY", data.get("reliability", {}).get("health_summary", ""))
 
 for stage_name in (
     "bootstrap",
@@ -529,6 +637,7 @@ def emit(name, value):
     print(f"{name}={shlex.quote(str(value))}")
 
 emit("EXECUTOR_RUN_ID", data.get("run_id", ""))
+emit("EXECUTOR_STATE_SCHEMA_VERSION", data.get("schema_version", "phase49-state-v1"))
 emit("EXECUTOR_CURRENT_STAGE", data.get("current_stage", "bootstrap"))
 emit("EXECUTOR_STATE_COMPLETED_STAGES_NL", "\n".join(data.get("completed_stages", [])))
 emit("EXECUTOR_STATE_FAILED_STAGE", data.get("failed_stage", "none"))
@@ -744,6 +853,118 @@ with open(failure_file, "w", encoding="utf-8") as fh:
 PYEOF
 }
 
+executor_runtime_update_metrics() {
+  [[ -n "${EXECUTOR_PYTHON_BIN}" ]] || return
+
+  local stage_payload
+  local retry_payload
+  local repair_payload
+
+  stage_payload="$(executor_runtime_stage_payload)"
+  retry_payload="$(executor_runtime_retry_count_payload)"
+  repair_payload="$(executor_runtime_repair_payload)"
+
+  "${EXECUTOR_PYTHON_BIN}" - <<'PYEOF' "${EXECUTOR_METRICS_FILE}" "${EXECUTOR_METRICS_SCHEMA_VERSION}" "${EXECUTOR_RUN_ID}" "${EXECUTOR_RUN_STATUS}" "${EXECUTOR_FAILURE_CLASSIFICATION}" "${EXECUTOR_FINISHED_AT:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}" "${stage_payload}" "${retry_payload}" "${repair_payload}"
+import json
+import sys
+from datetime import datetime
+
+(
+    metrics_file,
+    schema_version,
+    run_id,
+    run_status,
+    failure_classification,
+    updated_at,
+    stage_payload,
+    retry_payload,
+    repair_payload,
+) = sys.argv[1:]
+
+def parse_iso(value):
+    if not value:
+        return None
+    return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+
+metrics = {
+    "schema_version": schema_version,
+    "updated_at": updated_at,
+    "runs_total": 0,
+    "success_total": 0,
+    "failure_total": 0,
+    "failure_by_class": {},
+    "retry_by_stage": {},
+    "stage_duration_ms": {},
+    "repair_attempts": {"total": 0, "successful": 0, "failed": 0, "by_type": {}},
+}
+
+try:
+    with open(metrics_file, encoding="utf-8") as fh:
+        loaded = json.load(fh)
+    if isinstance(loaded, dict):
+        metrics.update(loaded)
+except FileNotFoundError:
+    pass
+except Exception:
+    pass
+
+metrics["schema_version"] = schema_version
+metrics["updated_at"] = updated_at
+metrics["runs_total"] = int(metrics.get("runs_total", 0)) + 1
+if run_status == "completed":
+    metrics["success_total"] = int(metrics.get("success_total", 0)) + 1
+else:
+    metrics["failure_total"] = int(metrics.get("failure_total", 0)) + 1
+    if failure_classification and failure_classification != "none":
+        failure_map = metrics.setdefault("failure_by_class", {})
+        failure_map[failure_classification] = int(failure_map.get(failure_classification, 0)) + 1
+
+retry_map = metrics.setdefault("retry_by_stage", {})
+for line in retry_payload.splitlines():
+    if not line:
+        continue
+    name, count = line.split("\t", 1)
+    retry_map[name] = int(retry_map.get(name, 0)) + int(count or "0")
+
+duration_map = metrics.setdefault("stage_duration_ms", {})
+for line in stage_payload.splitlines():
+    if not line:
+        continue
+    name, kind, status, started, ended, retry_count, fail_class = line.split("\t")
+    started_dt = parse_iso(started)
+    ended_dt = parse_iso(ended)
+    duration = 0
+    if started_dt and ended_dt:
+        duration = max(int((ended_dt - started_dt).total_seconds() * 1000), 0)
+    entry = duration_map.setdefault(name, {"kind": kind, "runs": 0, "total_ms": 0, "last_ms": 0})
+    entry["kind"] = kind
+    entry["runs"] = int(entry.get("runs", 0)) + 1
+    entry["total_ms"] = int(entry.get("total_ms", 0)) + duration
+    entry["last_ms"] = duration
+
+repair_root = metrics.setdefault("repair_attempts", {"total": 0, "successful": 0, "failed": 0, "by_type": {}})
+repair_by_type = repair_root.setdefault("by_type", {})
+for line in repair_payload.splitlines():
+    if not line:
+        continue
+    name, attempts, successes = line.split("\t")
+    attempts_int = int(attempts or "0")
+    successes_int = int(successes or "0")
+    failures_int = max(attempts_int - successes_int, 0)
+    repair_root["total"] = int(repair_root.get("total", 0)) + attempts_int
+    repair_root["successful"] = int(repair_root.get("successful", 0)) + successes_int
+    repair_root["failed"] = int(repair_root.get("failed", 0)) + failures_int
+    entry = repair_by_type.setdefault(name, {"attempts": 0, "successful": 0, "failed": 0})
+    entry["attempts"] = int(entry.get("attempts", 0)) + attempts_int
+    entry["successful"] = int(entry.get("successful", 0)) + successes_int
+    entry["failed"] = int(entry.get("failed", 0)) + failures_int
+
+with open(metrics_file, "w", encoding="utf-8") as fh:
+    json.dump(metrics, fh, indent=2)
+    fh.write("\n")
+PYEOF
+}
+
 executor_runtime_reconcile_existing_pr() {
   local branch_name="${EXECUTOR_REPOSITORY_BRANCH}"
   local body_file="${EXECUTOR_PR_BODY_FILE}"
@@ -791,6 +1012,7 @@ PYEOF
   EXECUTOR_RECONCILED_PR_URL="${reconcile_output}"
   EXECUTOR_PR_URL="${EXECUTOR_RECONCILED_PR_URL}"
   executor_runtime_trace_event "pr_create" "ok" "reconciled existing pull request after create failure" "${EXECUTOR_PR_URL}"
+  executor_runtime_note_repair_attempt "pr_reconciliation" "success" "reconciled existing PR during guarded side-effect recovery"
   return 0
 }
 

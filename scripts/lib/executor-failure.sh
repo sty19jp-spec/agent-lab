@@ -11,8 +11,11 @@ executor_finalize_success() {
   EXECUTOR_FAILURE_CLASSIFICATION="none"
   EXECUTOR_ERROR_SUMMARY=""
   EXECUTOR_LAST_FAILURE_CLASSIFICATION="none"
+  EXECUTOR_HEALTH_STATUS="${EXECUTOR_HEALTH_STATUS:-pass}"
+  EXECUTOR_HEALTH_SUMMARY="${EXECUTOR_HEALTH_SUMMARY:-runtime self-check passed}"
   executor_runtime_refresh_repo_state "${EXECUTOR_REPOSITORY_BASE_COMMIT}" "${EXECUTOR_REPOSITORY_HEAD_COMMIT}"
   executor_runtime_write_report
+  executor_runtime_update_metrics
 }
 
 executor_fail_with_class() {
@@ -31,8 +34,13 @@ executor_fail_with_class() {
   fi
 
   executor_stage_record_failure "${stage}" "${fail_classification}" "${message}" "${artifact}"
+  if [[ "${EXECUTOR_HEALTH_STATUS}" == "pending" ]]; then
+    EXECUTOR_HEALTH_STATUS="fail"
+    EXECUTOR_HEALTH_SUMMARY="${message}"
+  fi
   executor_runtime_refresh_repo_state "${EXECUTOR_REPOSITORY_BASE_COMMIT}" "${EXECUTOR_REPOSITORY_HEAD_COMMIT}"
   executor_runtime_write_report
+  executor_runtime_update_metrics
   executor_runtime_write_failure_report \
     "${stage}" \
     "${EXECUTOR_LAST_COMMAND}" \
