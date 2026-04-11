@@ -1,0 +1,46 @@
+{
+  "phase": "target-pilot",
+  "task_or_change_summary": "Phase9 T1-T4 live harness adoption pilot for _inspect_agent_lab",
+  "target_context": {
+    "repo": "C:\\AI\\projects\\_inspect_agent_lab",
+    "workflow": "restorable-full-update",
+    "secret": "Drive owner is user",
+    "approval_surface": "owner/reviewer are the same user"
+  },
+  "authoritative_docs_refs": [
+    "C:\\AI\\projects\\harness-system\\docs\\decisions\\00_current_control_plane_v30.md",
+    "C:\\AI\\projects\\harness-system\\docs\\decisions\\2026-04-11_phase8_close_and_phase9_implementation_execution_next_v1.md",
+    "C:\\AI\\projects\\harness-system\\docs\\decisions\\2026-04-10_p8-ws6_target_repo_preflight_checklist_v1.md",
+    "C:\\AI\\projects\\harness-system\\docs\\decisions\\2026-04-10_p8-ws6_single_target_pilot_adoption_plan_v1.md",
+    "C:\\AI\\projects\\harness-system\\docs\\decisions\\2026-04-10_p8-ws6_target_specific_acceptance_path_v1.md",
+    "C:\\AI\\projects\\harness-system\\docs\\decisions\\2026-04-10_p8-ws6_live_pilot_blocker_gap_memo_v1.md"
+  ],
+  "policy_sensitive_dimensions": [
+    "branch protection",
+    "reviewer ownership",
+    "workflow update strategy",
+    "Drive secrets owner"
+  ],
+  "source_refs": {
+    "branch protection": "https://api.github.com/repos/sty19jp-spec/agent-lab/branches/main/protection",
+    "reviewer ownership": "user-confirmed-owner-reviewer",
+    "workflow update strategy": "reports/adoption/workflow_update_strategy.json",
+    "Drive secrets owner": "user-confirmed-drive-owner"
+  },
+  "dimension_values": {
+    "branch protection": {
+      "protected": true,
+      "required_checks": []
+    },
+    "reviewer ownership": {
+      "owner": "user",
+      "reviewer": "user"
+    },
+    "workflow update strategy": "restorable-full-update",
+    "Drive secrets owner": {
+      "owner": "user",
+      "secret_policy": "Secret Provider + injection-first"
+    }
+  },
+  "last_known_snapshot_ref": "reports/adoption/workflow_update_strategy.json"
+}

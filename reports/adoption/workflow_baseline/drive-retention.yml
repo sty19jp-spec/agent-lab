@@ -1,0 +1,70 @@
+name: Drive History Retention
+
+on:
+  schedule:
+    # Every Sunday at 02:00 UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      confirm_delete:
+        description: 'Type "yes" to actually delete (omit or leave blank for dry-run)'
+        required: false
+        default: ''
+      hard_delete:
+        description: 'Type "yes" to permanently delete instead of moving to Trash'
+        required: false
+        default: ''
+      retain_months:
+        description: 'Number of months to retain (default: 12)'
+        required: false
+        default: '12'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  retention:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run retention (dry-run on schedule)
+        if: github.event_name == 'schedule'
+        run: bash scripts/drive-history-clean.sh
+        env:
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+
+      - name: Run retention (manual / dry-run)
+        if: >
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.confirm_delete != 'yes'
+        run: |
+          bash scripts/drive-history-clean.sh \
+            --retain-months "${{ github.event.inputs.retain_months }}"
+        env:
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+
+      - name: Run retention (manual / delete / trash)
+        if: >
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.confirm_delete == 'yes' &&
+          github.event.inputs.hard_delete != 'yes'
+        run: |
+          bash scripts/drive-history-clean.sh \
+            --retain-months "${{ github.event.inputs.retain_months }}" \
+            --confirm --delete
+        env:
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+
+      - name: Run retention (manual / delete / hard)
+        if: >
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.confirm_delete == 'yes' &&
+          github.event.inputs.hard_delete == 'yes'
+        run: |
+          bash scripts/drive-history-clean.sh \
+            --retain-months "${{ github.event.inputs.retain_months }}" \
+            --confirm --delete --hard-delete
+        env:
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}

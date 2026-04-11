@@ -1,0 +1,87 @@
+name: PR Readiness Validator
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      pr_body:
+        description: "PR body markdown for manual validation"
+        required: true
+        type: string
+      base_sha:
+        description: "Optional base commit SHA override"
+        required: false
+        type: string
+      head_ref:
+        description: "Optional head branch override"
+        required: false
+        type: string
+
+jobs:
+  validate-pr-readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run PR readiness validator
+        env:
+          PR_BODY_INPUT: ${{ inputs.pr_body }}
+          EXECUTOR_NAME: github-actions
+          EXECUTOR_VERSION: ${{ github.workflow_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            body_file="/tmp/pr-body.md"
+            printf '%s\n' "$PR_BODY_INPUT" > "$body_file"
+
+            base_sha="${{ inputs.base_sha }}"
+            if [ -z "$base_sha" ]; then
+              git fetch --no-tags --depth=1 origin main
+              base_sha="$(git merge-base origin/main HEAD)"
+            fi
+
+            head_sha="${{ github.sha }}"
+            head_ref="${{ inputs.head_ref }}"
+            if [ -z "$head_ref" ]; then
+              head_ref="${{ github.ref_name }}"
+            fi
+
+            bash scripts/pre-validate-pr.sh \
+              --body-file "$body_file" \
+              --validate-only \
+              --base main \
+              --head-ref "$head_ref" \
+              --base-sha "$base_sha" \
+              --head-sha "$head_sha"
+          else
+            body_file="/tmp/pr-body.md"
+            jq -r '.pull_request.body' "$GITHUB_EVENT_PATH" > "$body_file"
+
+            bash scripts/pre-validate-pr.sh \
+              --body-file "$body_file" \
+              --validate-only \
+              --base "${{ github.event.pull_request.base.ref }}" \
+              --head-ref "${{ github.head_ref }}" \
+              --base-sha "${{ github.event.pull_request.base.sha }}" \
+              --head-sha "${{ github.sha }}"
+          fi
+
+      - name: Upload executor observability artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-readiness-observability-${{ github.run_id }}
+          path: |
+            .runtime/execution-report.json
+            .runtime/debug-trace.jsonl
+          if-no-files-found: warn

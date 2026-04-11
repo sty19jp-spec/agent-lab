@@ -1,0 +1,132 @@
+name: CI Verifier
+
+on:
+  push:
+    paths:
+      - ".github/workflows/ci-verifier.yml"
+      - "scripts/run_ci_verifier.py"
+      - "scripts/evaluate_pr_gate.py"
+      - "scripts/write_pr_metadata.py"
+      - "scripts/render_pr_body.py"
+      - "scripts/evaluate_planning_reports.py"
+      - "scripts/validate_planning_reports.py"
+      - "reports/run_bundles/*.json"
+      - "reports/implementation/*.json"
+      - "reports/implementation/*.md"
+      - "reports/planning/*.md"
+      - "tasks/implementation/*.md"
+      - "templates/pr-body-template.md"
+  pull_request:
+    paths:
+      - ".github/workflows/ci-verifier.yml"
+      - "scripts/run_ci_verifier.py"
+      - "scripts/evaluate_pr_gate.py"
+      - "scripts/write_pr_metadata.py"
+      - "scripts/render_pr_body.py"
+      - "scripts/evaluate_planning_reports.py"
+      - "scripts/validate_planning_reports.py"
+      - "reports/run_bundles/*.json"
+      - "reports/implementation/*.json"
+      - "reports/implementation/*.md"
+      - "reports/planning/*.md"
+      - "tasks/implementation/*.md"
+      - "templates/pr-body-template.md"
+  workflow_dispatch:
+
+jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      has_samples: ${{ steps.build.outputs.has_samples }}
+      matrix: ${{ steps.build.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: build
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          samples = [
+              {
+                  "name": "pass-sample",
+                  "run_bundle": "reports/run_bundles/2026-04-07_202022_2026-04-07_p5-t4_codex_cross_backend_handoff_run_bundle.json",
+                  "fail_on_gate": "fail",
+              },
+              {
+                  "name": "hold-sample",
+                  "run_bundle": "reports/run_bundles/2026-04-07_202609_2026-04-07_p5-t4_gemini_cross_backend_handoff_run_bundle.json",
+                  "fail_on_gate": "fail",
+              },
+              {
+                  "name": "fail-sample",
+                  "run_bundle": "reports/run_bundles/2026-04-07_202022_2026-04-07_p5-t4_codex_cross_backend_handoff_ci_fail_run_bundle.json",
+                  "fail_on_gate": "never",
+              },
+          ]
+          available = [sample for sample in samples if (root / sample["run_bundle"]).exists()]
+          output = Path(os.environ["GITHUB_OUTPUT"])
+          with output.open("a", encoding="utf-8") as handle:
+              handle.write(f"has_samples={'true' if available else 'false'}\n")
+              handle.write(f"matrix={json.dumps({'include': available})}\n")
+
+  verify-samples:
+    needs: prepare-matrix
+    if: needs.prepare-matrix.outputs.has_samples == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run CI verifier
+        run: |
+          python scripts/run_ci_verifier.py \
+            --root "$GITHUB_WORKSPACE" \
+            --run-bundle "$GITHUB_WORKSPACE/${{ matrix.run_bundle }}" \
+            --fail-on-gate "${{ matrix.fail_on_gate }}"
+
+      - name: Assert expected reproduced gate
+        env:
+          RUN_BUNDLE: ${{ matrix.run_bundle }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          run_bundle = json.loads((root / os.environ["RUN_BUNDLE"]).read_text(encoding="utf-8"))
+          ci_path = root / "reports" / "ci_verifier" / f"{run_bundle['run_id']}_ci_verifier.json"
+          ci_result = json.loads(ci_path.read_text(encoding="utf-8"))
+          expected = {
+              "2026-04-07_202022_2026-04-07_p5-t4_codex_cross_backend_handoff": "pass",
+              "2026-04-07_202609_2026-04-07_p5-t4_gemini_cross_backend_handoff": "hold",
+              "2026-04-07_202022_2026-04-07_p5-t4_codex_cross_backend_handoff_ci_fail": "fail",
+          }
+          actual = ci_result["reproduced_gate_verdict"]
+          run_id = run_bundle["run_id"]
+          if actual != expected[run_id]:
+              raise SystemExit(f"unexpected gate verdict for {run_id}: {actual} != {expected[run_id]}")
+          print(f"{run_id}: {actual}")
+          PY
+
+      - name: Upload CI verifier artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}-artifacts
+          path: |
+            reports/ci_verifier/*.json
+            reports/pr_gate/*_ci_pr_gate_judgment.json
+            reports/pr_metadata/*_ci_pr_metadata.json
+            reports/pr_bodies/*_ci_pr_body.md

@@ -1,0 +1,26 @@
+{
+  "snapshot_files": [
+    "drive-retention.yml",
+    "drive-sync.yml",
+    "evidence-validation.yml",
+    "pr-readiness-validator.yml",
+    "validator-chain.yml"
+  ],
+  "updated_files": [
+    ".github/workflows/validator-chain.yml",
+    ".github/workflows/ci-verifier.yml"
+  ],
+  "retained_files": [
+    ".github/workflows/drive-retention.yml",
+    ".github/workflows/drive-sync.yml",
+    ".github/workflows/evidence-validation.yml",
+    ".github/workflows/pr-readiness-validator.yml"
+  ],
+  "policy": "restorable-full-update",
+  "notes": [
+    "validator-chain is replaced with the Harness chain.",
+    "ci-verifier is added from Harness standard.",
+    "drive and legacy evidence/pr-readiness workflows are retained for compatibility and rollback clarity."
+  ],
+  "rollback_path": "reports/adoption/workflow_rollback.md"
+}

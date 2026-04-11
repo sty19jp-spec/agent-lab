@@ -1,0 +1,54 @@
+{
+  "phase": "target-pilot",
+  "task_or_change_summary": "Phase9 T1-T4 live harness adoption pilot for _inspect_agent_lab",
+  "policy_status": "resolved",
+  "authoritative_source_ref": "https://api.github.com/repos/sty19jp-spec/agent-lab/branches/main/protection",
+  "applicable_rules_summary": [
+    "Never treat canonical source unavailability as an implicit pass.",
+    "Degraded results do not replace live close evidence.",
+    "Owner, reviewer, branch protection, and secrets ownership must stay explicit."
+  ],
+  "gating_recommendation": "pass",
+  "degraded_marker": null,
+  "unresolved_risks": [],
+  "dimension_results": [
+    {
+      "dimension": "branch protection",
+      "status": "resolved",
+      "source_ref": "https://api.github.com/repos/sty19jp-spec/agent-lab/branches/main/protection",
+      "value": {
+        "protected": true,
+        "required_checks": []
+      },
+      "summary": "branch protection is backed by live or explicit source evidence."
+    },
+    {
+      "dimension": "reviewer ownership",
+      "status": "resolved",
+      "source_ref": "user-confirmed-owner-reviewer",
+      "value": {
+        "owner": "user",
+        "reviewer": "user"
+      },
+      "summary": "reviewer ownership is backed by live or explicit source evidence."
+    },
+    {
+      "dimension": "workflow update strategy",
+      "status": "resolved",
+      "source_ref": "reports/adoption/workflow_update_strategy.json",
+      "value": "restorable-full-update",
+      "summary": "workflow update strategy is backed by live or explicit source evidence."
+    },
+    {
+      "dimension": "Drive secrets owner",
+      "status": "resolved",
+      "source_ref": "user-confirmed-drive-owner",
+      "value": {
+        "owner": "user",
+        "secret_policy": "Secret Provider + injection-first"
+      },
+      "summary": "Drive secrets owner is backed by live or explicit source evidence."
+    }
+  ],
+  "generated_at": "2026-04-11T00:09:26.921423+00:00"
+}

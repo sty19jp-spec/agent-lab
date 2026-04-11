@@ -1,0 +1,25 @@
+{
+  "mode": "adopt-existing",
+  "mode_preset": "existing-repo-adoption",
+  "auto_merge_enabled": false,
+  "auto_repair_enabled": false,
+  "human_review_required_default": true,
+  "selected_packs": {
+    "workflow": "solo-fast",
+    "domain": "work",
+    "policy_enabled": false,
+    "hidden_required_units": [
+      "core"
+    ],
+    "required_judgment_sources": [
+      "docs"
+    ],
+    "visible_units": [
+      "workflow",
+      "domain",
+      "policy"
+    ]
+  },
+  "promotion_unit": "whole harness-system release set",
+  "created_at": "2026-04-11T00:09:26.773025+00:00"
+}

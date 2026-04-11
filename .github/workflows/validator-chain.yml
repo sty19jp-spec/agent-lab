@@ -1,176 +1,264 @@
-name: Validator Chain
+name: Harness Validator Chain
 
 on:
+  push:
+    paths:
+      - ".github/workflows/validator-chain.yml"
+      - "scripts/run_ci_verifier.py"
+      - "scripts/validate_evidence_provenance.py"
+      - "scripts/validate_pr_readiness.py"
+      - "scripts/provenance_utils.py"
+      - "reports/run_bundles/*.json"
+      - "reports/implementation/*.json"
+      - "reports/implementation/*.md"
+      - "reports/pr_readiness/*.txt"
+      - "templates/pr-body-template.md"
   pull_request:
+    paths:
+      - ".github/workflows/validator-chain.yml"
+      - "scripts/run_ci_verifier.py"
+      - "scripts/validate_evidence_provenance.py"
+      - "scripts/validate_pr_readiness.py"
+      - "scripts/provenance_utils.py"
+      - "reports/run_bundles/*.json"
+      - "reports/implementation/*.json"
+      - "reports/implementation/*.md"
+      - "reports/pr_readiness/*.txt"
+      - "templates/pr-body-template.md"
   workflow_dispatch:
-    inputs:
-      pr_body:
-        description: "PR body markdown for manual validation"
-        required: true
-        type: string
-      base_sha:
-        description: "Optional base SHA override"
-        required: false
-        type: string
-      head_sha:
-        description: "Optional head SHA override"
-        required: false
-        type: string
-      head_ref:
-        description: "Optional head ref override"
-        required: false
-        type: string
 
 jobs:
-  evidence-provenance:
-    name: Evidence and Provenance
+  prepare-matrix:
     runs-on: ubuntu-latest
+    outputs:
+      has_samples: ${{ steps.build.outputs.has_samples }}
+      chain_matrix: ${{ steps.build.outputs.chain_matrix }}
+      readiness_matrix: ${{ steps.build.outputs.readiness_matrix }}
+      verifier_matrix: ${{ steps.build.outputs.verifier_matrix }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Run evidence validator for changed evidence files
-        shell: bash
+      - id: build
+        shell: python
         run: |
-          set -euo pipefail
+          import json
+          import os
+          from pathlib import Path
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            base_sha="${{ inputs.base_sha }}"
-            if [ -z "$base_sha" ]; then
-              git fetch --no-tags --depth=1 origin main
-              base_sha="$(git merge-base origin/main HEAD)"
-            fi
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          chain_samples = [
+              {
+                  "name": "pass-sample",
+                  "run_bundle": "reports/run_bundles/2026-04-07_202022_2026-04-07_p5-t4_codex_cross_backend_handoff_run_bundle.json",
+                  "changed_files": "reports/pr_readiness/pass_sample_changed_files.txt",
+              },
+              {
+                  "name": "hold-sample",
+                  "run_bundle": "reports/run_bundles/2026-04-07_202609_2026-04-07_p5-t4_gemini_cross_backend_handoff_run_bundle.json",
+                  "changed_files": "reports/pr_readiness/hold_sample_changed_files.txt",
+              },
+          ]
+          available = [
+              sample
+              for sample in chain_samples
+              if (root / sample["run_bundle"]).exists()
+              and (root / sample["changed_files"]).exists()
+          ]
+          chain_only = [{"name": sample["name"], "run_bundle": sample["run_bundle"]} for sample in available]
+          output = Path(os.environ["GITHUB_OUTPUT"])
+          with output.open("a", encoding="utf-8") as handle:
+              handle.write(f"has_samples={'true' if available else 'false'}\n")
+              handle.write(f"verifier_matrix={json.dumps({'include': available})}\n")
+              handle.write(f"readiness_matrix={json.dumps({'include': available})}\n")
+              handle.write(f"chain_matrix={json.dumps({'include': chain_only})}\n")
 
-            head_sha="${{ inputs.head_sha }}"
-            if [ -z "$head_sha" ]; then
-              head_sha="${{ github.sha }}"
-            fi
-          else
-            base_sha="${{ github.event.pull_request.base.sha }}"
-            head_sha="${{ github.event.pull_request.head.sha }}"
-          fi
-
-          mapfile -t evidence_files < <(git diff --name-only "$base_sha...$head_sha" | grep '^examples/evidence/.*-evidence\.json$' || true)
-
-          if [ ${#evidence_files[@]} -eq 0 ]; then
-            echo "No changed evidence JSON files detected; treating Evidence/Provenance stage as PASS"
-            exit 0
-          fi
-
-          for f in "${evidence_files[@]}"; do
-            echo "Validating $f"
-            python3 tools/evidence_validator.py \
-              --evidence-file "$f" \
-              --schema-name execution-evidence \
-              --schema-version v1 \
-              --policy strict \
-              --ci-mode
-          done
-
-  pr-readiness:
-    name: PR Readiness
+  ci-verifier:
+    needs: prepare-matrix
+    if: needs.prepare-matrix.outputs.has_samples == 'true'
     runs-on: ubuntu-latest
-    needs: evidence-provenance
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.verifier_matrix) }}
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
 
-      - name: Run PR readiness validator
+      - name: Run CI verifier
         env:
-          PR_BODY_INPUT: ${{ inputs.pr_body }}
-          EXECUTOR_NAME: github-actions
-          EXECUTOR_VERSION: ${{ github.workflow_ref }}
-        shell: bash
+          RUN_BUNDLE: ${{ matrix.run_bundle }}
         run: |
-          set -euo pipefail
+          python scripts/run_ci_verifier.py \
+            --root "$GITHUB_WORKSPACE" \
+            --run-bundle "$GITHUB_WORKSPACE/${RUN_BUNDLE}" \
+            --fail-on-gate never
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            body_file="/tmp/pr-body.md"
-            printf '%s\n' "$PR_BODY_INPUT" > "$body_file"
-
-            base_sha="${{ inputs.base_sha }}"
-            if [ -z "$base_sha" ]; then
-              git fetch --no-tags --depth=1 origin main
-              base_sha="$(git merge-base origin/main HEAD)"
-            fi
-
-            head_sha="${{ inputs.head_sha }}"
-            if [ -z "$head_sha" ]; then
-              head_sha="${{ github.sha }}"
-            fi
-
-            head_ref="${{ inputs.head_ref }}"
-            if [ -z "$head_ref" ]; then
-              head_ref="${{ github.ref_name }}"
-            fi
-
-            bash scripts/pre-validate-pr.sh \
-              --body-file "$body_file" \
-              --validate-only \
-              --base main \
-              --head-ref "$head_ref" \
-              --base-sha "$base_sha" \
-              --head-sha "$head_sha"
-          else
-            body_file="/tmp/pr-body.md"
-            jq -r '.pull_request.body' "$GITHUB_EVENT_PATH" > "$body_file"
-
-            bash scripts/pre-validate-pr.sh \
-              --body-file "$body_file" \
-              --validate-only \
-              --base "${{ github.event.pull_request.base.ref }}" \
-              --head-ref "${{ github.head_ref }}" \
-              --base-sha "${{ github.event.pull_request.base.sha }}" \
-              --head-sha "${{ github.sha }}"
-          fi
-
-      - name: Upload executor observability artifacts
+      - name: Upload verifier artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: validator-chain-observability-${{ github.run_id }}
+          name: ${{ matrix.name }}-ci-verifier
           path: |
-            .runtime/execution-report.json
-            .runtime/debug-trace.jsonl
-          if-no-files-found: warn
+            reports/ci_verifier/*.json
+            reports/pr_gate/*_ci_pr_gate_judgment.json
+            reports/pr_metadata/*_ci_pr_metadata.json
+            reports/pr_bodies/*_ci_pr_body.md
 
-  chain-result:
-    name: Chain Result
+  evidence-provenance:
     runs-on: ubuntu-latest
     needs:
-      - pr-readiness
-      - evidence-provenance
-    if: always()
+      - prepare-matrix
+      - ci-verifier
+    if: needs.prepare-matrix.outputs.has_samples == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.chain_matrix) }}
+
     steps:
-      - name: Publish PASS/FAIL
-        shell: bash
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate backend/run bundle/ci verifier provenance
+        env:
+          RUN_BUNDLE: ${{ matrix.run_bundle }}
         run: |
-          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
 
-          pr_status="${{ needs.pr-readiness.result }}"
-          ev_status="${{ needs.evidence-provenance.result }}"
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          run_bundle_path = root / os.environ["RUN_BUNDLE"]
+          run_bundle = json.loads(run_bundle_path.read_text(encoding="utf-8"))
+          backend_evidence = root / run_bundle["backend_evidence_path"]
+          ci_verifier = root / "reports" / "ci_verifier" / f"{run_bundle['run_id']}_ci_verifier.json"
+          for artifact in (backend_evidence, run_bundle_path, ci_verifier):
+              subprocess.check_call([
+                  "python",
+                  "scripts/validate_evidence_provenance.py",
+                  "--root",
+                  str(root),
+                  "--artifact",
+                  str(artifact),
+              ], cwd=root)
+          PY
 
-          echo "PR Readiness job result: $pr_status"
-          echo "Evidence/Provenance job result: $ev_status"
+  pr-readiness:
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-matrix
+      - ci-verifier
+      - evidence-provenance
+    if: needs.prepare-matrix.outputs.has_samples == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.readiness_matrix) }}
 
-          if [ "$pr_status" = "success" ] && [ "$ev_status" = "success" ]; then
-            echo "PASS"
-            exit 0
-          fi
+    steps:
+      - uses: actions/checkout@v4
 
-          echo "FAIL"
-          exit 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate PR readiness
+        env:
+          RUN_BUNDLE: ${{ matrix.run_bundle }}
+          CHANGED_FILES: ${{ matrix.changed_files }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          run_bundle_path = root / os.environ["RUN_BUNDLE"]
+          run_bundle = json.loads(run_bundle_path.read_text(encoding="utf-8"))
+          pr_body = root / "reports" / "pr_bodies" / f"{run_bundle['run_id']}_ci_pr_body.md"
+          pr_metadata = root / "reports" / "pr_metadata" / f"{run_bundle['run_id']}_ci_pr_metadata.json"
+          branch_name = json.loads(pr_metadata.read_text(encoding="utf-8"))["branch_name"]
+          subprocess.check_call([
+              "python",
+              "scripts/validate_pr_readiness.py",
+              "--root",
+              str(root),
+              "--pr-body-file",
+              str(pr_body),
+              "--pr-metadata",
+              str(pr_metadata),
+              "--head-ref",
+              branch_name,
+              "--changed-files-file",
+              str(root / os.environ["CHANGED_FILES"]),
+          ], cwd=root)
+          PY
+
+  chain-summary:
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-matrix
+      - ci-verifier
+      - evidence-provenance
+      - pr-readiness
+    if: always() && needs.prepare-matrix.outputs.has_samples == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-matrix.outputs.chain_matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Summarize chain verdict
+        env:
+          RUN_BUNDLE: ${{ matrix.run_bundle }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          run_bundle = json.loads((root / os.environ["RUN_BUNDLE"]).read_text(encoding="utf-8"))
+          run_id = run_bundle["run_id"]
+
+          ci_verifier = json.loads((root / "reports" / "ci_verifier" / f"{run_id}_ci_verifier.json").read_text(encoding="utf-8"))
+          pr_readiness = json.loads((root / "reports" / "pr_readiness" / f"{run_id}_ci_pr_body_validation.json").read_text(encoding="utf-8"))
+          evidence_reports = [
+              json.loads((root / "reports" / "evidence_validation" / f"{path}_provenance_validation.json").read_text(encoding="utf-8"))
+              for path in [
+                  Path(run_bundle["backend_evidence_path"]).stem,
+                  Path(os.environ["RUN_BUNDLE"]).stem,
+                  f"{run_id}_ci_verifier",
+              ]
+          ]
+
+          if any(report["validator_verdict"] == "fail" for report in evidence_reports):
+              print(f"{run_id}: FAIL (evidence/provenance)")
+              raise SystemExit(1)
+
+          if pr_readiness["validator_verdict"] == "fail":
+              print(f"{run_id}: FAIL (pr readiness)")
+              raise SystemExit(1)
+
+          if ci_verifier["reproduced_gate_verdict"] == "fail":
+              print(f"{run_id}: FAIL (ci verifier gate)")
+              raise SystemExit(1)
+
+          if ci_verifier["reproduced_gate_verdict"] == "hold" or pr_readiness["validator_verdict"] == "hold":
+              print(f"{run_id}: HOLD (manual review required)")
+              raise SystemExit(0)
+
+          print(f"{run_id}: PASS")
+          PY

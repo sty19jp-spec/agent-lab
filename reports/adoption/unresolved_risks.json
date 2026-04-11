@@ -1,0 +1,8 @@
+{
+  "policy_unresolved_risks": [],
+  "notes": [
+    "Branch protection is not enabled on main; required checks are currently empty.",
+    "Remote CI execution is intentionally not required for local pilot completion.",
+    "Drive workflows remain secret-dependent and are not validated with live secret execution here."
+  ]
+}

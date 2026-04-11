@@ -1,0 +1,117 @@
+{
+  "current_branch": "chore/adopt-harness-bootstrap",
+  "remote_origin": "https://github.com/sty19jp-spec/agent-lab.git",
+  "source_target_root": "C:\\AI\\projects\\_inspect_agent_lab",
+  "working_root": "C:\\AI\\projects\\_inspect_agent_lab",
+  "dirty_change_handling": {
+    "strategy": "separate-commit-branch",
+    "branch_name": "chore/separate-pr-template-change",
+    "path": ".github/PULL_REQUEST_TEMPLATE.md"
+  },
+  "branch_rules": {
+    "branch_info": {
+      "name": "main",
+      "commit": {
+        "sha": "2322954425a566b79961b186b72b486e10344243",
+        "node_id": "C_kwDORYtsJ9oAKDIzMjI5NTQ0MjVhNTY2Yjc5OTYxYjE4NmI3MmI0ODZlMTAzNDQyNDM",
+        "commit": {
+          "author": {
+            "name": "sty19jp-spec",
+            "email": "sty19jp@gmail.com",
+            "date": "2026-03-12T06:42:56Z"
+          },
+          "committer": {
+            "name": "GitHub",
+            "email": "noreply@github.com",
+            "date": "2026-03-12T06:42:56Z"
+          },
+          "message": "docs(guide): add TrackA Layer5 snapshot guides (#48)",
+          "tree": {
+            "sha": "405c933545a419190e5c9f32526d9191033259ed",
+            "url": "https://api.github.com/repos/sty19jp-spec/agent-lab/git/trees/405c933545a419190e5c9f32526d9191033259ed"
+          },
+          "url": "https://api.github.com/repos/sty19jp-spec/agent-lab/git/commits/2322954425a566b79961b186b72b486e10344243",
+          "comment_count": 0,
+          "verification": {
+            "verified": true,
+            "reason": "valid",
+            "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsFcBAABCAAQBQJpsmBwCRC1aQ7uu5UhlAAA+E8QADLvlRR3mQN5iEiTrp+8ua1i\nhKXPDQ7ECXmiVX4q2L96XLn2briFCDXGlLsho1tv+YPI6PmfDEcVwsF0HvvIet8e\nmq99gsk5jmwG67cIG80mR5NRmY48S14bYi/DmsnPM05A+YY2EUq9576jymBApvEu\nzQEpXJXh7G3VCyDcyd5S5NJknQ3nBAD/Er8LKdfe5X+YgPC84Dz8AvCRdQImQY5P\nICpertozfZuRJvbY0D6bVtXUp7SC63/bq9QzCOfMXUmoklPDitbGLwaROMSqCgfm\nrea/jCOrdbZso8LiovkQu/mh7YsY6P5den1WsyCILLwkXZLNNH2CKv/VFw7pTKYm\n+F66gbaVD1251XOEr5HLdJ7md21vKGuPsowSbwPQmU+Ry12gqi+Oh52C56ieyM5T\nvCgW0ZeUoXdNFFudWeR9mkMS8Gq2wdZPcCyORF2Fd2MmLuYsyegcCsMIl8SrdeN2\neatPNQIGuhHEarSUeNiwF5snrutWXZVRAMV5O7mTVToHkMdFTp6+xOxZrBQMbFrQ\nHYXS1al9k+cPpqXT+vyN1fvoaCReCjWHEUSqdHj+eCSNJuqsym71B9zZ53YEdfni\nnXNdlJFs3ONqz93ySNfqKGh3t5NlopF6vW2v/IJtMWzeT7rnPRILhSkQbkaj6bUj\nTlBHwZ1RQ7Fu7T26XQUH\n=Yp78\n-----END PGP SIGNATURE-----\n",
+            "payload": "tree 405c933545a419190e5c9f32526d9191033259ed\nparent e64dfe19dc9ea74daf62f32e14c50e7ca674d787\nauthor sty19jp-spec <sty19jp@gmail.com> 1773297776 +0900\ncommitter GitHub <noreply@github.com> 1773297776 +0900\n\ndocs(guide): add TrackA Layer5 snapshot guides (#48)",
+            "verified_at": "2026-03-12T06:42:57Z"
+          }
+        },
+        "url": "https://api.github.com/repos/sty19jp-spec/agent-lab/commits/2322954425a566b79961b186b72b486e10344243",
+        "html_url": "https://github.com/sty19jp-spec/agent-lab/commit/2322954425a566b79961b186b72b486e10344243",
+        "comments_url": "https://api.github.com/repos/sty19jp-spec/agent-lab/commits/2322954425a566b79961b186b72b486e10344243/comments",
+        "author": {
+          "login": "sty19jp-spec",
+          "id": 253640131,
+          "node_id": "U_kgDODx49ww",
+          "avatar_url": "https://avatars.githubusercontent.com/u/253640131?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/sty19jp-spec",
+          "html_url": "https://github.com/sty19jp-spec",
+          "followers_url": "https://api.github.com/users/sty19jp-spec/followers",
+          "following_url": "https://api.github.com/users/sty19jp-spec/following{/other_user}",
+          "gists_url": "https://api.github.com/users/sty19jp-spec/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/sty19jp-spec/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/sty19jp-spec/subscriptions",
+          "organizations_url": "https://api.github.com/users/sty19jp-spec/orgs",
+          "repos_url": "https://api.github.com/users/sty19jp-spec/repos",
+          "events_url": "https://api.github.com/users/sty19jp-spec/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/sty19jp-spec/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "committer": {
+          "login": "web-flow",
+          "id": 19864447,
+          "node_id": "MDQ6VXNlcjE5ODY0NDQ3",
+          "avatar_url": "https://avatars.githubusercontent.com/u/19864447?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/web-flow",
+          "html_url": "https://github.com/web-flow",
+          "followers_url": "https://api.github.com/users/web-flow/followers",
+          "following_url": "https://api.github.com/users/web-flow/following{/other_user}",
+          "gists_url": "https://api.github.com/users/web-flow/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/web-flow/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/web-flow/subscriptions",
+          "organizations_url": "https://api.github.com/users/web-flow/orgs",
+          "repos_url": "https://api.github.com/users/web-flow/repos",
+          "events_url": "https://api.github.com/users/web-flow/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/web-flow/received_events",
+          "type": "User",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "parents": [
+          {
+            "sha": "e64dfe19dc9ea74daf62f32e14c50e7ca674d787",
+            "url": "https://api.github.com/repos/sty19jp-spec/agent-lab/commits/e64dfe19dc9ea74daf62f32e14c50e7ca674d787",
+            "html_url": "https://github.com/sty19jp-spec/agent-lab/commit/e64dfe19dc9ea74daf62f32e14c50e7ca674d787"
+          }
+        ]
+      },
+      "_links": {
+        "self": "https://api.github.com/repos/sty19jp-spec/agent-lab/branches/main",
+        "html": "https://github.com/sty19jp-spec/agent-lab/tree/main"
+      },
+      "protected": true,
+      "protection": {
+        "enabled": false,
+        "required_status_checks": {
+          "enforcement_level": "off",
+          "contexts": [],
+          "checks": []
+        }
+      },
+      "protection_url": "https://api.github.com/repos/sty19jp-spec/agent-lab/branches/main/protection"
+    },
+    "branch_protection": null
+  },
+  "owner": "user",
+  "reviewer": "user",
+  "drive_secrets_owner": "user",
+  "generated_at": "2026-04-11T00:09:26.850117+00:00"
+}
