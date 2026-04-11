@@ -1,0 +1,10 @@
+{
+  "evidence_kind": "live-target-pilot",
+  "refs": [
+    "reports/adoption/preflight_evidence.json",
+    "https://api.github.com/repos/sty19jp-spec/agent-lab/branches/main/protection",
+    "user-confirmed-owner-reviewer",
+    "user-confirmed-drive-owner"
+  ],
+  "generated_at": "2026-04-11T11:37:28.895511+00:00"
+}

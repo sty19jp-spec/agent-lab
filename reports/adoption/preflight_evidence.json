@@ -1,13 +1,10 @@
 {
   "current_branch": "chore/adopt-harness-bootstrap",
+  "default_branch": "main",
   "remote_origin": "https://github.com/sty19jp-spec/agent-lab.git",
-  "source_target_root": "C:\\AI\\projects\\_inspect_agent_lab",
-  "working_root": "C:\\AI\\projects\\_inspect_agent_lab",
-  "dirty_change_handling": {
-    "strategy": "separate-commit-branch",
-    "branch_name": "chore/separate-pr-template-change",
-    "path": ".github/PULL_REQUEST_TEMPLATE.md"
-  },
+  "source_target_root": "C:\\AI\\projects\\_inspect_agent_lab__phase9_clean",
+  "working_root": "C:\\AI\\projects\\_inspect_agent_lab__phase9_clean",
+  "dirty_change_handling": null,
   "branch_rules": {
     "branch_info": {
       "name": "main",
@@ -113,5 +110,5 @@
   "owner": "user",
   "reviewer": "user",
   "drive_secrets_owner": "user",
-  "generated_at": "2026-04-11T00:09:26.850117+00:00"
+  "generated_at": "2026-04-11T11:37:28.894176+00:00"
 }

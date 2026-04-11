@@ -1,5 +1,13 @@
 {
-  "policy_unresolved_risks": [],
+  "policy_unresolved_risks": [
+    {
+      "risk_class": "canonical-policy-source",
+      "target_specific_impact": "Policy adapter is not backed by a live Thinking OS / Obsidian source.",
+      "execution_blocker_or_followup": "follow-up",
+      "required_owner_or_evidence": "canonical source access or refreshed authoritative snapshot",
+      "source_ref_or_snapshot_ref": "reports/policy/phase9_t1_t4_policy_snapshot.json"
+    }
+  ],
   "notes": [
     "Branch protection is not enabled on main; required checks are currently empty.",
     "Remote CI execution is intentionally not required for local pilot completion.",

@@ -1,0 +1,13 @@
+{
+  "snapshot_kind": "authoritative-docs",
+  "canonical_source_kind": "thinking-os-obsidian",
+  "authoritative_docs_refs": [
+    "C:\\AI\\projects\\harness-system\\docs\\decisions\\2026-04-11_phase9_overall_execution_plan_v1.md",
+    "C:\\AI\\projects\\harness-system\\docs\\decisions\\2026-04-11_phase9_t7_stable_repo_judgement_v1.md"
+  ],
+  "notes": [
+    "Harness stores only the last known authoritative policy snapshot.",
+    "This snapshot does not replace live target-pilot close evidence."
+  ],
+  "generated_at": "2026-04-11T11:37:28.894798+00:00"
+}

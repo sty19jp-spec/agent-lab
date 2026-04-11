@@ -2,19 +2,22 @@
   "phase": "target-pilot",
   "task_or_change_summary": "Phase9 T1-T4 live harness adoption pilot for _inspect_agent_lab",
   "target_context": {
-    "repo": "C:\\AI\\projects\\_inspect_agent_lab",
+    "repo": "C:\\AI\\projects\\_inspect_agent_lab__phase9_clean",
     "workflow": "restorable-full-update",
     "secret": "Drive owner is user",
     "approval_surface": "owner/reviewer are the same user"
   },
   "authoritative_docs_refs": [
-    "C:\\AI\\projects\\harness-system\\docs\\decisions\\00_current_control_plane_v30.md",
-    "C:\\AI\\projects\\harness-system\\docs\\decisions\\2026-04-11_phase8_close_and_phase9_implementation_execution_next_v1.md",
-    "C:\\AI\\projects\\harness-system\\docs\\decisions\\2026-04-10_p8-ws6_target_repo_preflight_checklist_v1.md",
-    "C:\\AI\\projects\\harness-system\\docs\\decisions\\2026-04-10_p8-ws6_single_target_pilot_adoption_plan_v1.md",
-    "C:\\AI\\projects\\harness-system\\docs\\decisions\\2026-04-10_p8-ws6_target_specific_acceptance_path_v1.md",
-    "C:\\AI\\projects\\harness-system\\docs\\decisions\\2026-04-10_p8-ws6_live_pilot_blocker_gap_memo_v1.md"
+    "C:\\AI\\projects\\harness-system\\docs\\decisions\\2026-04-11_phase9_overall_execution_plan_v1.md",
+    "C:\\AI\\projects\\harness-system\\docs\\decisions\\2026-04-11_phase9_t7_stable_repo_judgement_v1.md"
   ],
+  "canonical_policy_source": {
+    "source_kind": "thinking-os-obsidian",
+    "status": "unavailable",
+    "source_ref": null,
+    "snapshot_ref": "reports/policy/phase9_t1_t4_policy_snapshot.json",
+    "currency_note": "External canonical policy source is not live-connected in harness-system; authoritative docs snapshot is used."
+  },
   "policy_sensitive_dimensions": [
     "branch protection",
     "reviewer ownership",
@@ -42,5 +45,9 @@
       "secret_policy": "Secret Provider + injection-first"
     }
   },
-  "last_known_snapshot_ref": "reports/adoption/workflow_update_strategy.json"
+  "last_known_snapshot_ref": "reports/policy/phase9_t1_t4_policy_snapshot.json",
+  "live_evidence_refs": [
+    "reports/policy/phase9_t1_t4_live_evidence_refs.json",
+    "reports/adoption/preflight_evidence.json"
+  ]
 }

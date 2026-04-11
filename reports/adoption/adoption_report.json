@@ -1,6 +1,6 @@
 {
   "scan_result": {
-    "target_root": "C:\\AI\\projects\\_inspect_agent_lab",
+    "target_root": "C:\\AI\\projects\\_inspect_agent_lab__phase9_clean",
     "existing_workflows": [
       "drive-retention.yml",
       "drive-sync.yml",
@@ -29,11 +29,7 @@
   "branch_apply_plan": {
     "default_branch_direct_apply_allowed": false,
     "adoption_branch_name": "chore/adopt-harness-bootstrap",
-    "dirty_change_handling": {
-      "strategy": "separate-commit-branch",
-      "branch_name": "chore/separate-pr-template-change",
-      "path": ".github/PULL_REQUEST_TEMPLATE.md"
-    }
+    "dirty_change_handling": null
   },
   "validation_result": {
     "validation_profile": "pilot-minimum",
@@ -96,13 +92,19 @@
       ],
       "rollback_path": "reports/adoption/workflow_rollback.md"
     },
-    "validated_at": "2026-04-11T00:09:26.932802+00:00"
+    "validated_at": "2026-04-11T11:37:28.979056+00:00"
   },
-  "policy_result_path": "reports/policy/phase9_t1_t4_policy_result.json",
+  "policy_result": {
+    "path": "reports/policy/phase9_t1_t4_policy_result.json",
+    "policy_status": "degraded",
+    "gating_recommendation": "caution",
+    "policy_snapshot_ref": "reports/policy/phase9_t1_t4_policy_snapshot.json",
+    "live_evidence_ref": "reports/policy/phase9_t1_t4_live_evidence_refs.json"
+  },
   "branch_rules": {
     "protected": true,
     "protection": null
   },
   "unresolved_risks_path": "reports/adoption/unresolved_risks.json",
-  "generated_at": "2026-04-11T00:09:26.933414+00:00"
+  "generated_at": "2026-04-11T11:37:28.979592+00:00"
 }

@@ -10,9 +10,5 @@
 
 ## authoritative refs
 
-- `C:\AI\projects\harness-system\docs\decisions\00_current_control_plane_v30.md`
-- `C:\AI\projects\harness-system\docs\decisions\2026-04-11_phase8_close_and_phase9_implementation_execution_next_v1.md`
-- `C:\AI\projects\harness-system\docs\decisions\2026-04-10_p8-ws6_target_repo_preflight_checklist_v1.md`
-- `C:\AI\projects\harness-system\docs\decisions\2026-04-10_p8-ws6_single_target_pilot_adoption_plan_v1.md`
-- `C:\AI\projects\harness-system\docs\decisions\2026-04-10_p8-ws6_target_specific_acceptance_path_v1.md`
-- `C:\AI\projects\harness-system\docs\decisions\2026-04-10_p8-ws6_live_pilot_blocker_gap_memo_v1.md`
+- `C:\AI\projects\harness-system\docs\decisions\2026-04-11_phase9_overall_execution_plan_v1.md`
+- `C:\AI\projects\harness-system\docs\decisions\2026-04-11_phase9_t7_stable_repo_judgement_v1.md`

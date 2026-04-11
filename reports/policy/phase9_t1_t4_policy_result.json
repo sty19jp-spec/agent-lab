@@ -1,16 +1,42 @@
 {
   "phase": "target-pilot",
   "task_or_change_summary": "Phase9 T1-T4 live harness adoption pilot for _inspect_agent_lab",
-  "policy_status": "resolved",
-  "authoritative_source_ref": "https://api.github.com/repos/sty19jp-spec/agent-lab/branches/main/protection",
+  "policy_status": "degraded",
+  "authoritative_source_ref": "reports/policy/phase9_t1_t4_policy_snapshot.json",
   "applicable_rules_summary": [
     "Never treat canonical source unavailability as an implicit pass.",
     "Degraded results do not replace live close evidence.",
     "Owner, reviewer, branch protection, and secrets ownership must stay explicit."
   ],
-  "gating_recommendation": "pass",
-  "degraded_marker": null,
-  "unresolved_risks": [],
+  "gating_recommendation": "caution",
+  "degraded_marker": {
+    "unavailable_reason": "live source missing for one or more dimensions",
+    "snapshot_reference": "reports/policy/phase9_t1_t4_policy_snapshot.json",
+    "timestamp_or_currency_note": "2026-04-11T11:37:28.968455+00:00",
+    "required_follow_up_owner_evidence": "user confirmation or live GitHub/owner evidence"
+  },
+  "canonical_policy_source": {
+    "source_kind": "thinking-os-obsidian",
+    "status": "degraded",
+    "source_ref": null,
+    "snapshot_ref": "reports/policy/phase9_t1_t4_policy_snapshot.json",
+    "summary": "canonical policy source is unavailable; snapshot fallback is being used.",
+    "currency_note": "External canonical policy source is not live-connected in harness-system; authoritative docs snapshot is used."
+  },
+  "policy_snapshot_ref": "reports/policy/phase9_t1_t4_policy_snapshot.json",
+  "live_evidence_refs": [
+    "reports/policy/phase9_t1_t4_live_evidence_refs.json",
+    "reports/adoption/preflight_evidence.json"
+  ],
+  "unresolved_risks": [
+    {
+      "risk_class": "canonical-policy-source",
+      "target_specific_impact": "Policy adapter is not backed by a live Thinking OS / Obsidian source.",
+      "execution_blocker_or_followup": "follow-up",
+      "required_owner_or_evidence": "canonical source access or refreshed authoritative snapshot",
+      "source_ref_or_snapshot_ref": "reports/policy/phase9_t1_t4_policy_snapshot.json"
+    }
+  ],
   "dimension_results": [
     {
       "dimension": "branch protection",
@@ -50,5 +76,5 @@
       "summary": "Drive secrets owner is backed by live or explicit source evidence."
     }
   ],
-  "generated_at": "2026-04-11T00:09:26.921423+00:00"
+  "generated_at": "2026-04-11T11:37:28.968471+00:00"
 }
