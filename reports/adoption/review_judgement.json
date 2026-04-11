@@ -1,0 +1,27 @@
+{
+  "generated_at": "2026-04-11T00:00:00+00:00",
+  "branches": [
+    {
+      "branch": "chore/adopt-harness-bootstrap",
+      "judgement": "merge-candidate",
+      "reason": "Live pilot artifacts, workflow snapshot/rollback, policy result, and adoption validation are present. Branch also includes remote normalization commit for duplicate pull request template path.",
+      "required_follow_up": [
+        "Review adoption diff and merge if the pilot is accepted.",
+        "Treat CI/workflow validation as expected-failure until remote CI execution is intentionally run."
+      ]
+    },
+    {
+      "branch": "chore/separate-pr-template-change",
+      "judgement": "do-not-merge",
+      "reason": "This branch only captured the pre-existing dirty PR template state and was superseded by path normalization on the adoption branch.",
+      "required_follow_up": [
+        "Keep as reference only, or close without merge after confirming no longer needed."
+      ]
+    }
+  ],
+  "clean_working_root": "C:\\AI\\projects\\_inspect_agent_lab__phase9_clean",
+  "notes": [
+    "The original local clone on Windows had a case-conflict between .github/PULL_REQUEST_TEMPLATE.md and .github/pull_request_template.md.",
+    "Use the clean working root for any further local work on the adoption branch."
+  ]
+}
